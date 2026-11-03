@@ -347,7 +347,7 @@ def _ficha(nombre_icono, color, valor, texto):
 _CSS = r"""
 /* Encabezado y tarjeta del formulario */
 .aud-formulario { padding: 26px; display: grid; gap: 22px; }
-.aud-campos { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 20px; }
+.aud-campos { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 280px), 1fr)); gap: 20px; }
 .aud-campo { display: grid; gap: 12px; align-content: start; min-width: 0; }
 .aud-campo-titulo { display: flex; gap: 12px; align-items: center; }
 .aud-campo-titulo h2 { margin: 0; font-size: 16px; font-weight: 800; }

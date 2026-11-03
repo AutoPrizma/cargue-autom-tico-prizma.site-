@@ -39,7 +39,7 @@ Construida con **FastAPI** y **Playwright (Chromium)**. Se despliega en **Railwa
 - **Tests evaluativos.** Lee un .docx con preguntas, lo valida, permite corregirlo en pantalla y lo crea en PRIZMA. Puede hacerse por separado (`/tests`) o junto con un cargue de actividades.
 - **Cargue Moodle local.** En `/moodle` analiza una matriz CSV/XLSX y un ZIP de PDF/H5P, muestra la vista previa por semana y publica en un curso Prizma con Chromium visible e inicio de sesión manual. La pestaña **Etiquetas** contiene tarjetas separadas para banners, infografías y videos; puedes arrastrar la imagen y el HTML correspondiente se genera automáticamente, con la imagen en `src` como Data URL sin subirla a Moodle.
 - **Auditoría profunda de curso publicado.** Las pestañas **Auditar curso** de PRIZMA y Moodle recorren un curso ya cargado en modo de solo lectura. La auditoría PRIZMA descubre lo publicado directamente; Moodle también funciona sin matriz, pero admite una matriz opcional para comparar nombres y semanas esperados. Ninguna requiere ni descarga syllabus. Ambas verifican recursos y títulos según lo que cada plataforma permite inspeccionar.
-- **Tema claro/oscuro** y diseño adaptable a móvil.
+- **Tema claro/oscuro** y diseño adaptable a móvil y tablet en las vistas de Inicio, PRIZMA, Moodle, Tests, Auditorías, Cursos, Historial, Reportes, Matrices y Automatizaciones. El menú y las pestañas se desplazan dentro de su contenedor, las grillas/formularios se reorganizan en pantallas estrechas y las tablas anchas se pueden recorrer horizontalmente. En Cargue PRIZMA, el estado de selección del dropzone no altera la tarjeta que presenta el archivo elegido.
 
 ---
 

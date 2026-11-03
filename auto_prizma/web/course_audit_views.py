@@ -319,14 +319,14 @@ def render_moodle_audit_page(
 
 _CSS_AUDITORIA = r"""
 .auditoria-page { display: grid; gap: 20px; }
-.auditoria-pasos { display: grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); gap: 14px; }
+.auditoria-pasos { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 230px), 1fr)); gap: 14px; }
 .auditoria-paso { display: grid; grid-template-columns: 44px minmax(0, 1fr); gap: 12px; align-items: start; padding: 16px; border: 1px solid var(--borde); border-radius: 14px; background: var(--panel); }
 .auditoria-paso .icono-tile { width: 44px; height: 44px; border-radius: 12px; }
 .auditoria-paso strong { display: block; margin: 2px 0 4px; font-size: 13.5px; }
 .auditoria-paso p { margin: 0; color: var(--muted); font-size: 12.5px; line-height: 1.5; }
 .auditoria-form { padding: 24px; display: grid; gap: 16px; }
 .auditoria-form h2 { margin: 0; font-size: 19px; font-weight: 800; }
-.auditoria-form .form-fila { display: grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); gap: 14px; align-items: start; }
+.auditoria-form .form-fila { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 230px), 1fr)); gap: 14px; align-items: start; }
 .auditoria-form label { display: grid; gap: 7px; font-size: 13px; font-weight: 700; color: var(--texto-2); }
 .auditoria-form input:not([type="checkbox"]), .auditoria-form select { min-height: 44px; width: 100%; padding: 10px 13px; border: 1px solid var(--borde); border-radius: 11px; background: var(--panel-2); color: var(--texto); font-size: 14px; }
 .auditoria-form label > input[type="url"] { align-self: start; height: 48px; box-sizing: border-box; }
