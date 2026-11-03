@@ -601,7 +601,7 @@ def test_engine_converts_h5p_activities_when_format_is_html(monkeypatch, tmp_pat
         "nombre": "Actividad", "categoria_prizma": "OVA", "tipo_archivo": "H5P",
     }
     monkeypatch.setattr(engine, "sync_playwright", lambda: _Playwright())
-    monkeypatch.setattr(engine, "iniciar_sesion_prizma", lambda *a: None)
+    monkeypatch.setattr(engine, "iniciar_sesion_prizma", lambda *a, **k: None)
     monkeypatch.setattr(engine, "leer_actividades_excel", lambda *a, **k: [dict(actividad)])
     monkeypatch.setattr(engine, "crear_indice_recursos", lambda ruta: [{"nombre": "Actividad.html"}])
     monkeypatch.setattr(engine, "asegurar_listado", lambda pagina: True)

@@ -395,6 +395,7 @@ def _pagina_progreso(
                 <div>⏳ Pendiente</div>
                 <div>🔄 Procesando</div>
                 <div>✅ Completada</div>
+                <div>➖ Omitida</div>
                 <div>❌ Con error</div>
             </div>
             <form action="/cancelar/__TRABAJO_ID__" method="post" class="form-cancelar">
@@ -450,6 +451,7 @@ _CSS_PROGRESO = r"""
 .actividad-nombre { font-size: 13px; line-height: 1.4; color: var(--texto); }
 .actividad-error { margin-top: 4px; color: var(--rojo); font-size: 11.5px; word-break: break-word; }
 .actividad-ok { background: var(--verde-suave); }
+.actividad-omitida { background: var(--ambar-suave); }
 .actividad-error-fila { background: var(--rojo-suave); }
 .actividad-procesando { background: var(--acento-suave); box-shadow: inset 3px 0 0 var(--acento); }
 .estado-caja { padding: 16px; margin-bottom: 14px; border: 1px solid var(--borde); border-radius: 12px; background: var(--panel-2); }
@@ -504,6 +506,9 @@ function renderizarActividades(actividades) {
         } else if (actividad.estado === "ok") {
             icono = "✅";
             clase = "actividad-ok";
+        } else if (actividad.estado === "omitido") {
+            icono = "➖";
+            clase = "actividad-omitida";
         } else if (actividad.estado === "error") {
             icono = "❌";
             clase = "actividad-error-fila";
@@ -514,7 +519,7 @@ function renderizarActividades(actividades) {
             '<div><div class="actividad-nombre">' +
             actividad.numero + '. ' + escaparHtml(actividad.nombre) + '</div>';
 
-        if (actividad.estado === "error" && actividad.error) {
+        if ((actividad.estado === "error" || actividad.estado === "omitido") && actividad.error) {
             html += '<div class="actividad-error">' + escaparHtml(actividad.error) + '</div>';
         }
 

@@ -24,6 +24,7 @@ from auto_prizma.core.config import (
 )
 from auto_prizma.services.auth import USUARIO_ACTUAL, _es_de
 from auto_prizma.services.history import _nombre_reporte, _registrar_reporte_final
+from auto_prizma.services.matrix_analysis import _parsear_datos_academicos
 
 
 # ============================================================
@@ -139,6 +140,8 @@ def ejecutar_cargue_con_historial(
             trabajo,
             trabajo.get("seleccion_actividades"),
             formato_recurso=trabajo.get("formato_recurso") or FORMATO_RECURSO_POR_DEFECTO,
+            preparacion=trabajo.get("preparacion"),
+            ruta_syllabus=trabajo.get("ruta_syllabus") or "",
         )
     finally:
         USUARIO_ACTUAL.reset(testigo_usuario)
@@ -441,6 +444,10 @@ def create_analyzed_job(
     test_job_id=None,
     test_info=None,
     formato_recurso=FORMATO_RECURSO_POR_DEFECTO,
+    contenido_syllabus=None,
+    nombre_syllabus="",
+    linea_academica="",
+    nivel_pensum="",
 ):
     """Registra un trabajo de cargue a partir de un analisis valido.
 
@@ -459,6 +466,11 @@ def create_analyzed_job(
         test_job_id: id del Test Evaluativo combinado, si lo hay.
         test_info: resumen del Test Evaluativo para la pagina, si lo hay.
         formato_recurso: "H5P" o "HTML".
+        contenido_syllabus: bytes del PDF del syllabus, si lo hay.
+        nombre_syllabus: nombre visible del syllabus.
+        linea_academica: "programa pensum asignatura nombre" de la ficha a
+            preparar (opcional; vacio = sin preparacion).
+        nivel_pensum: nivel de pensum de la misma ficha.
 
     Returns:
         (trabajo_id, resultado): resultado es lo que muestra la pagina de analisis.
@@ -478,6 +490,36 @@ def create_analyzed_job(
 
     with open(ruta_zip, "wb") as archivo:
         archivo.write(contenido_zip)
+
+    # Syllabus opcional (PDF aparte del ZIP) para la preparación de la
+    # asignatura; los videos de intro/cierre se toman del ZIP adjunto.
+    ruta_syllabus = ""
+    preparacion = {
+        "syllabus": False,
+        "video_intro": "",
+        "video_cierre": "",
+        "linea_academica": str(linea_academica or "").strip(),
+        "nivel": str(nivel_pensum or "").strip(),
+        "curso": None,
+    }
+
+    if contenido_syllabus:
+        ruta_syllabus = os.path.join(carpeta_trabajo, "syllabus.pdf")
+        with open(ruta_syllabus, "wb") as archivo:
+            archivo.write(contenido_syllabus)
+        preparacion["syllabus"] = True
+
+    if preparacion["linea_academica"] and preparacion["nivel"]:
+        datos_academicos = _parsear_datos_academicos(
+            preparacion["linea_academica"]
+        )
+        if datos_academicos:
+            datos_academicos["nivel"] = preparacion["nivel"]
+            preparacion["curso"] = datos_academicos
+
+    videos = motor_prizma_modulo.detect_assignment_videos(contenido_zip)
+    preparacion["video_intro"] = videos.get("intro", "")
+    preparacion["video_cierre"] = videos.get("closing", "")
 
     carpeta_temp = os.path.join(TEMP_DIR, trabajo_id)
     os.makedirs(carpeta_temp, exist_ok=True)
@@ -513,6 +555,8 @@ def create_analyzed_job(
         "historial_registrado": False,
         "creado_en": _ahora_colombia_iso(),
         "cancelar_solicitado": False,
+        "preparacion": preparacion,
+        "ruta_syllabus": ruta_syllabus,
     }
 
     resultado = {
@@ -520,6 +564,7 @@ def create_analyzed_job(
         "zip": zip_info,
         "nombre_matriz": nombre_matriz,
         "formato_recurso": "HTML" if modo_html else "H5P",
+        "preparacion": preparacion,
     }
 
     if test_info is not None:

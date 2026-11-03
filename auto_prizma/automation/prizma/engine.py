@@ -42,6 +42,7 @@ from auto_prizma.automation.prizma.html_field import (  # noqa: E402
     NOMBRE_ARCHIVO_DESCONOCIDO,
     XPATH_TARJETA_ARCHIVO_RECURSO,
     XPATH_SECCION_RECURSO,
+    _confirmar_eliminacion as confirmar_eliminacion,
     archivo_en_recurso,
     es_campo_de_texto as _es_campo_de_texto,
     escribir_html_en_editor,
@@ -144,20 +145,16 @@ def actualizar_detalle_actividad(
         [],
     )
 
-    indice = numero - 1
+    # Busca por numero (no por posicion): las acciones de preparacion se
+    # anteponen a la lista con numero 0 y desplazarian los indices.
+    for fila in detalle:
 
-    if not (
-        0 <= indice < len(detalle)
-    ):
+        if fila.get("numero") != numero:
+            continue
+
+        fila["estado"] = nuevo_estado
+        fila["error"] = error or ""
         return
-
-    detalle[indice][
-        "estado"
-    ] = nuevo_estado
-
-    detalle[indice][
-        "error"
-    ] = error or ""
 
 
 # ============================================================
@@ -949,6 +946,91 @@ def crear_indice_recursos(
             )
 
     return indice
+
+
+# ============================================================
+# VIDEOS DE LA ASIGNATURA (PREPARACIÓN)
+# ============================================================
+
+# Mismas extensiones de video que auto_prizma.auditor.procesar.EXTS_POR_FAMILIA.
+ASSIGNMENT_VIDEO_EXTS = (".webm", ".mp4", ".mov", ".m4v", ".mkv", ".avi")
+
+
+def detect_assignment_videos(origen):
+    """Busca en el ZIP los videos de intro y cierre de la asignatura.
+
+    Args:
+        origen: bytes del ZIP o su ruta.
+
+    Returns:
+        {"intro": nombre_miembro, "closing": nombre_miembro}; cada clave queda
+        en "" cuando no hay video. Solo considera extensiones de video y
+        compara el nombre sin acentos ni símbolos («Video Intro.webm»,
+        «video_cierre.mp4», «introductorio.webm», ...).
+    """
+    resultado = {"intro": "", "closing": ""}
+
+    try:
+        if isinstance(origen, (bytes, bytearray)):
+            contexto = zipfile.ZipFile(io.BytesIO(bytes(origen)), "r")
+        else:
+            contexto = zipfile.ZipFile(origen, "r")
+
+        with contexto as zip_ref:
+
+            for miembro in zip_ref.namelist():
+
+                if miembro.endswith("/"):
+                    continue
+
+                nombre = os.path.basename(miembro)
+                extension = os.path.splitext(nombre)[1].lower()
+
+                if extension not in ASSIGNMENT_VIDEO_EXTS:
+                    continue
+
+                nombre_n = normalizar_texto(nombre)
+
+                if not resultado["intro"] and "intro" in nombre_n:
+                    resultado["intro"] = miembro
+
+                if not resultado["closing"] and (
+                    "cierre" in nombre_n or "closing" in nombre_n
+                ):
+                    resultado["closing"] = miembro
+
+    except Exception:
+        # Un ZIP ilegible no debe romper el análisis: la preparación se
+        # omite y el usuario lo ve en la revisión.
+        return {"intro": "", "closing": ""}
+
+    return resultado
+
+
+def extract_zip_member(ruta_zip, miembro, destino):
+    """Extrae un archivo del ZIP hacia `destino`.
+
+    Returns:
+        (ruta_destino, None) si se extrajo, o (None, motivo).
+    """
+    try:
+
+        with zipfile.ZipFile(ruta_zip, "r") as zip_ref:
+
+            with zip_ref.open(miembro) as origen:
+
+                os.makedirs(os.path.dirname(destino) or ".", exist_ok=True)
+
+                with open(destino, "wb") as salida:
+                    shutil.copyfileobj(origen, salida)
+
+    except Exception as error:
+        return None, "no se pudo leer el archivo del ZIP (" + type(error).__name__ + ")"
+
+    if not os.path.isfile(destino):
+        return None, "el archivo no quedó guardado tras extraerlo del ZIP"
+
+    return destino, None
 
 
 # ============================================================
@@ -4405,10 +4487,22 @@ def iniciar_sesion_prizma(
     if not abrir_actividades:
         return True
 
-    # --------------------------------------------------------
-    # ENTRAR A ACTIVIDADES
-    # --------------------------------------------------------
+    return enter_activities_module(pagina)
 
+
+def enter_activities_module(pagina):
+    """Entra al módulo Actividades desde el inicio de PRIZMA y confirma el listado.
+
+    Lo usan el login normal del cargue y la preparación de la asignatura
+    (que entra a PRIZMA sin actividades, prepara la ficha y luego continúa
+    con la misma sesión).
+
+    Returns:
+        True cuando el listado de actividades quedó visible.
+
+    Raises:
+        RuntimeError: si la tarjeta o el listado no aparecen.
+    """
     tarjeta_actividades = pagina.get_by_role(
         "button"
     ).filter(
@@ -6145,8 +6239,14 @@ def _adoptar_pestana_abierta(pagina, paginas_previas, espera_ms=1500):
     return pagina
 
 
-def seleccionar_curso_prizma(pagina, curso_prizma):
-    """Navega Programas → Pensum → Nivel → Asignatura y abre Vista previa."""
+def seleccionar_curso_prizma(pagina, curso_prizma, open_action="preview"):
+    """Navega Programas → Pensum → Nivel → Asignatura y abre su vista.
+
+    Con open_action="preview" (por defecto) entra por el ojo de la fila y
+    pulsa "Vista previa", como la auditoría de curso. Con open_action="edit"
+    abre el formulario "Editar Asignatura por pensum", que es donde se
+    aplica la preparación (syllabus, videos de intro/cierre y descripción).
+    """
     curso = curso_prizma if isinstance(curso_prizma, dict) else {}
     requeridos = ("programa", "pensum", "nivel", "asignatura")
     faltantes = [nombre for nombre in requeridos if not str(curso.get(nombre) or "").strip()]
@@ -6328,6 +6428,65 @@ def seleccionar_curso_prizma(pagina, curso_prizma):
         except Exception as error:
             raise RuntimeError("No se pudo abrir la fila seleccionada de " + titulo + ".") from error
 
+    def click_edit_on_row(fila):
+        """Pulsa el botón de editar de la fila si PRIZMA lo nombra claro.
+
+        Solo se hace clic cuando el botón se identifica por aria-label/title
+        («editar», «edit», «pencil», «lápiz»): adivinar por posición podría
+        alcanzar el botón de eliminar. Respaldo: en el ambiente de pruebas
+        (2026-11-03) los botones de Acciones no traen nombre accesible y el
+        de edición es el único con la clase `btnLila` de la fila (ojo =
+        `btnIndigo`, papelera = `btnWhite`), así que se busca por esa clase
+        DENTRO de la fila encontrada, nunca por posición.
+        """
+        nonlocal pagina
+        try:
+            por_nombre = fila.locator(
+                'button[aria-label*="editar" i], button[title*="editar" i], '
+                'button[aria-label*="edit" i], button[title*="edit" i], '
+                'button[aria-label*="pencil" i], button[title*="pencil" i], '
+                'button[aria-label*="lápi" i], button[title*="lápi" i]'
+            )
+            if por_nombre.count() > 0 and por_nombre.first.is_visible():
+                boton = por_nombre.first
+            else:
+                por_clase = fila.locator("button.btnLila")
+                if por_clase.count() == 0 or not por_clase.first.is_visible():
+                    return False
+                boton = por_clase.first
+            boton.scroll_into_view_if_needed(timeout=4000)
+            try:
+                paginas_previas = list(pagina.context.pages)
+            except Exception:
+                paginas_previas = []
+            boton.click(timeout=10000)
+            pagina.wait_for_timeout(1500)
+            pagina = _adoptar_pestana_abierta(pagina, paginas_previas)
+            return True
+        except Exception:
+            return False
+
+    def click_edit_on_page():
+        """Pulsa «Editar»/«Guardar» de la vista de detalle de la asignatura."""
+        nonlocal pagina
+        try:
+            boton = pagina.get_by_role(
+                "button",
+                name=re.compile(r"^\s*(Editar|Guardar)\s*$", re.I),
+            ).last
+            boton.wait_for(state="visible", timeout=20000)
+            boton.scroll_into_view_if_needed(timeout=5000)
+            try:
+                paginas_previas = list(pagina.context.pages)
+            except Exception:
+                paginas_previas = []
+            boton.click(timeout=15000)
+            pagina.wait_for_timeout(1500)
+            pagina = _adoptar_pestana_abierta(pagina, paginas_previas)
+            return True
+        except Exception:
+            return False
+
     codigo_programa = str(curso.get("programa") or "").strip()
     codigo_pensum = str(curso.get("pensum") or "").strip()
     codigo_asignatura = str(curso.get("codigo_asignatura") or "").strip()
@@ -6398,13 +6557,44 @@ def seleccionar_curso_prizma(pagina, curso_prizma):
         tipo_accion="flecha",
     )
 
+    def matches_assignment(texto):
+        return (
+            contiene_codigo(texto, codigo_asignatura)
+            and (not nombre_asignatura or normalizar(nombre_asignatura) in normalizar(texto))
+        )
+
+    if open_action == "edit":
+        # Preparación de la asignatura: abrir su formulario de edición.
+        fila_asignatura = fila_coincidente(
+            "Asignatura por pensum",
+            codigo_asignatura or nombre_asignatura,
+            matches_assignment,
+        )
+        if not click_edit_on_row(fila_asignatura):
+            # Reserva: si la fila no expone un botón de edición con nombre
+            # claro, se entra con el ojo (camino de la auditoría) y se pulsa
+            # «Editar» en la vista de detalle.
+            abrir_fila(
+                "Asignatura por pensum",
+                codigo_asignatura or nombre_asignatura,
+                matches_assignment,
+                0,
+                tipo_accion="ojo",
+            )
+            if not click_edit_on_page():
+                raise RuntimeError(
+                    "No se encontró un botón «Editar» para la asignatura seleccionada."
+                )
+        if not wait_for_assignment_form(pagina):
+            raise RuntimeError(
+                "PRIZMA no mostró el formulario «Editar Asignatura por pensum»."
+            )
+        return True
+
     abrir_fila(
         "Asignatura por pensum",
         codigo_asignatura or nombre_asignatura,
-        lambda texto: (
-            contiene_codigo(texto, codigo_asignatura)
-            and (not nombre_asignatura or normalizar(nombre_asignatura) in normalizar(texto))
-        ),
+        matches_assignment,
         0,
         tipo_accion="ojo",
     )
@@ -6677,6 +6867,586 @@ def auditar_curso_prizma(
     }
 
 
+# ============================================================
+# PREPARACIÓN DE LA ASIGNATURA (PRE-CARGUE)
+# ============================================================
+#
+# Antes de subir recursos se puede preparar la ficha de la asignatura:
+# borrar la descripción placeholder, subir el syllabus y cargar los videos
+# de intro/cierre que traía el ZIP. Todo es opcional y ningún fallo detiene
+# el cargue: cada acción queda registrada como ok/omitido/error.
+
+# Etiquetas de los campos del formulario «Editar Asignatura por pensum»
+# (comparadas en minúsculas y sin acentos).
+ASSIGNMENT_SYLLABUS_LABELS = ("syllabus",)
+ASSIGNMENT_INTRO_VIDEO_LABELS = (
+    "video de introductorio",
+    "video introductorio",
+    "video de introduccion",
+    "video intro",
+)
+ASSIGNMENT_CLOSING_VIDEO_LABELS = (
+    "video de cierre",
+    "video cierre",
+)
+
+# Devuelve el índice del input[type=file] cuya etiqueta coincide. La estructura
+# asumida en PRIZMA es <p class="form-label">Etiqueta</p> seguido de un
+# bloque div.btnFile que contiene el input.
+_JS_FIND_FIELD_FILE = """
+(etiquetas) => {
+    function normalizar(texto) {
+        return String(texto || '').toLowerCase()
+            .normalize('NFD').replace(/[\\u0300-\\u036f]/g, '')
+            .replace(/\\s+/g, ' ').trim();
+    }
+    const objetivos = (etiquetas || []).map(normalizar).filter(Boolean);
+    const campos = Array.from(document.querySelectorAll('input[type="file"]'));
+    const titulos = document.querySelectorAll('.form-label, label.form-label, label');
+    for (const titulo of titulos) {
+        const texto = normalizar(titulo.textContent);
+        if (!texto) continue;
+        if (!objetivos.some(obj => texto === obj || texto.includes(obj))) continue;
+        // El campo file suele ser el bloque btnFile siguiente a la etiqueta.
+        let bloque = titulo.nextElementSibling;
+        let saltos = 0;
+        while (bloque && saltos < 4) {
+            if (bloque.classList && bloque.classList.contains('btnFile')) {
+                const dentro = bloque.querySelector('input[type="file"]');
+                if (dentro) {
+                    const indice = campos.indexOf(dentro);
+                    if (indice >= 0) return indice;
+                }
+            }
+            bloque = bloque.nextElementSibling;
+            saltos++;
+        }
+        // Reserva: el input dentro del mismo contenedor de la etiqueta.
+        const contenedor = titulo.parentElement;
+        if (contenedor) {
+            const dentro = contenedor.querySelector('input[type="file"]');
+            if (dentro) {
+                const indice = campos.indexOf(dentro);
+                if (indice >= 0) return indice;
+            }
+        }
+    }
+    return -1;
+}
+"""
+
+# True si el campo de archivo (por índice) muestra una tarjeta .fileItem
+# con tamaño visible (es decir, ya tiene un archivo cargado).
+_JS_FIELD_HAS_FILE = """
+(indice) => {
+    const campos = document.querySelectorAll('input[type="file"]');
+    const campo = campos[indice];
+    if (!campo) return false;
+    let bloque = campo.closest('.btnFile');
+    if (!bloque && campo.parentElement) bloque = campo.parentElement;
+    if (!bloque) return false;
+    const items = bloque.querySelectorAll('.fileItem');
+    for (const item of items) {
+        const rect = item.getBoundingClientRect();
+        if (rect.width > 0 && rect.height > 0) return true;
+    }
+    return false;
+}
+"""
+
+
+def wait_for_assignment_form(pagina):
+    """Espera a que el formulario «Editar Asignatura por pensum» esté usable.
+
+    Returns:
+        True si el formulario quedó visible (título o al menos un campo file).
+    """
+    try:
+        encabezado = pagina.locator(
+            "h1, h2, h3, h4"
+        ).filter(
+            has_text=re.compile(r"Asignatura", re.I)
+        ).first
+        encabezado.wait_for(state="visible", timeout=15000)
+    except Exception:
+        # Reserva: algunas vistas no muestran el título esperado.
+        try:
+            pagina.locator('input[type="file"]').first.wait_for(
+                state="attached", timeout=15000
+            )
+        except Exception:
+            return False
+
+    pagina.wait_for_timeout(800)
+    return True
+
+
+def find_field_file_input(pagina, etiquetas):
+    """Índice del input[type=file] del campo con esa etiqueta en PRIZMA.
+
+    Returns:
+        Índice del campo, o -1 si no se encontró.
+    """
+    try:
+        return int(pagina.evaluate(_JS_FIND_FIELD_FILE, list(etiquetas)))
+    except Exception:
+        return -1
+
+
+def field_has_file(pagina, indice):
+    """True si el campo de archivo (por índice) ya tiene un archivo cargado."""
+    if indice is None or indice < 0:
+        return False
+    try:
+        return bool(pagina.evaluate(_JS_FIELD_HAS_FILE, indice))
+    except Exception:
+        return False
+
+
+def remove_field_file(pagina, indice):
+    """Elimina el archivo actual de un campo por índice (papelera + confirmar).
+
+    Returns:
+        (True, "") si el campo quedó vacío, o (False, motivo).
+    """
+    if indice is None or indice < 0:
+        return False, "no se encontró el campo en el formulario de PRIZMA"
+
+    campo = pagina.locator('input[type="file"]').nth(indice)
+    try:
+        bloque = campo.locator(
+            'xpath=ancestor::div[contains(@class, "btnFile")][1]'
+        ).first
+        botones = bloque.locator("button")
+        if botones.count() == 0:
+            return False, "el campo no muestra botones de archivo"
+        # Orden de los botones de la tarjeta: [descargar, papelera].
+        botones.last.click(timeout=10000)
+    except Exception as error:
+        return False, (
+            "no se pudo pulsar la papelera del campo ("
+            + type(error).__name__
+            + ")"
+        )
+
+    if not confirmar_eliminacion(pagina):
+        return False, "PRIZMA no mostró la confirmación para eliminar el archivo"
+
+    transcurrido = 0
+    while transcurrido < 8000:
+        if not field_has_file(pagina, indice):
+            return True, ""
+        pagina.wait_for_timeout(300)
+        transcurrido += 300
+
+    return False, "el archivo siguió en el campo tras confirmar la eliminación"
+
+
+def upload_file_to_field(pagina, indice, ruta_archivo, etiqueta=""):
+    """Sube un archivo al campo de la asignatura por su índice.
+
+    Si el campo ya tiene archivo, se elimina primero.
+
+    Returns:
+        (True, "") si el archivo quedó cargado, o (False, motivo).
+    """
+    if indice is None or indice < 0:
+        return False, "no se encontró el campo «" + etiqueta + "» en PRIZMA"
+
+    if not os.path.isfile(ruta_archivo):
+        return False, "el archivo a subir no existe (" + etiqueta + ")"
+
+    if field_has_file(pagina, indice):
+        ok, motivo = remove_field_file(pagina, indice)
+        if not ok:
+            return False, motivo
+
+    campo = pagina.locator('input[type="file"]').nth(indice)
+    try:
+        campo.set_input_files(ruta_archivo, timeout=20000)
+    except Exception as error:
+        return False, (
+            "PRIZMA no aceptó el archivo «"
+            + etiqueta
+            + "» ("
+            + type(error).__name__
+            + ")"
+        )
+
+    transcurrido = 0
+    while transcurrido < 15000:
+        if field_has_file(pagina, indice):
+            return True, ""
+        pagina.wait_for_timeout(400)
+        transcurrido += 400
+
+    return False, "el archivo no apareció en el campo «" + etiqueta + "» de PRIZMA"
+
+
+def save_assignment_form(pagina):
+    """Guarda el formulario de la asignatura (botón «Editar»/«Guardar»).
+
+    Returns:
+        (True, "") si el formulario se cerró tras guardar, o (False, motivo).
+    """
+    boton = pagina.get_by_role(
+        "button",
+        name=re.compile(r"^\s*(Editar|Guardar)\s*$", re.I),
+    ).last
+
+    try:
+        boton.wait_for(state="visible", timeout=15000)
+        boton.click(timeout=15000)
+    except Exception as error:
+        return False, (
+            "no se pudo pulsar el botón de guardar ("
+            + type(error).__name__
+            + ")"
+        )
+
+    try:
+        desbloquear_interfaz_post_guardado(pagina)
+    except Exception:
+        pass
+
+    transcurrido = 0
+    while transcurrido < 15000:
+        try:
+            if boton.count() == 0 or not boton.first.is_visible():
+                return True, ""
+        except Exception:
+            return True, ""
+        pagina.wait_for_timeout(500)
+        transcurrido += 500
+
+    return False, "PRIZMA no cerró el formulario después de guardar"
+
+
+def description_has_placeholder(pagina):
+    """True si algún editor rico muestra el texto placeholder (NO_DISPONIBLE)."""
+    editores = pagina.locator('[contenteditable="true"]')
+    objetivos = [
+        normalizar_texto(texto)
+        for texto in TEXTOS_DESCRIPCION_A_BORRAR
+        if normalizar_texto(texto)
+    ]
+    try:
+        for i in range(editores.count()):
+            editor = editores.nth(i)
+            if not editor.is_visible():
+                continue
+            texto_n = normalizar_texto(editor.inner_text().strip())
+            if texto_n and any(objetivo in texto_n for objetivo in objetivos):
+                return True
+    except Exception:
+        return False
+
+    return False
+
+
+# Respaldo para vaciar el editor rico: se limpia el contenteditable por JS y
+# se disparan los eventos que escucha el framework (Quill/Vue) para que el
+# cambio se refleje en el estado del formulario.
+_JS_EMPTY_EDITOR = """
+(indice) => {
+    const eds = document.querySelectorAll('[contenteditable="true"]');
+    const ed = eds[indice];
+    if (!ed) return;
+    ed.focus();
+    ed.innerHTML = '';
+    ed.dispatchEvent(new Event('input', {bubbles: true}));
+    ed.dispatchEvent(new Event('change', {bubbles: true}));
+}
+"""
+
+
+def empty_description_field(pagina):
+    """Deja VACÍO el campo de descripción del formulario de la asignatura.
+
+    A diferencia de `limpiar_descripcion` (que solo borra el placeholder
+    exacto y se usa al cargar cada actividad), aquí el objetivo es dejar el
+    campo vacío sin importar qué texto traiga (decisión del usuario
+    2026-11-03). El editor es un contenteditable rico (B/I/U): se limpia
+    con Ctrl+A + Backspace y, como respaldo, vaciando por JS; siempre se
+    relee el DOM para verificar el resultado.
+
+    Returns:
+        (estado, detalle): estado "ok" (se vació), "omitido" (ya estaba
+        vacío) o "error" (motivo). Nunca lanza.
+    """
+    try:
+        editores = pagina.locator('[contenteditable="true"]')
+        visibles = []
+        textos_originales = []
+        for i in range(editores.count()):
+            try:
+                editor = editores.nth(i)
+                if not editor.is_visible():
+                    continue
+                visibles.append(i)
+                textos_originales.append(editor.inner_text().strip())
+            except Exception:
+                continue
+
+        if not visibles:
+            return "error", "no se encontró el campo de descripción en el formulario"
+
+        if not any(textos_originales):
+            return "omitido", "La descripción ya estaba vacía."
+
+        original = next((t for t in textos_originales if t), "")
+        recorte = " ".join(original.split())
+        if len(recorte) > 60:
+            recorte = recorte[:60] + "..."
+
+        for indice in visibles:
+            for _intento in range(3):
+                try:
+                    editor = editores.nth(indice)
+                    editor.wait_for(state="visible", timeout=10000)
+                    editor.click()
+                    editor.press("Control+A")
+                    editor.press("Backspace")
+                    pagina.wait_for_timeout(500)
+                    if not editor.inner_text().strip():
+                        break
+                except Exception:
+                    pass
+
+            # Respaldo: vaciar por JS si aún queda texto.
+            try:
+                if editores.nth(indice).inner_text().strip():
+                    pagina.evaluate(_JS_EMPTY_EDITOR, indice)
+                    pagina.wait_for_timeout(400)
+            except Exception:
+                pass
+
+        for indice in visibles:
+            try:
+                if editores.nth(indice).inner_text().strip():
+                    return (
+                        "error",
+                        "No se pudo vaciar la descripción (quedó texto en el campo).",
+                    )
+            except Exception as error:
+                return (
+                    "error",
+                    "No se pudo verificar la descripción ("
+                    + type(error).__name__ + ").",
+                )
+
+        return "ok", "Descripción vaciada (se eliminó «" + recorte + "»)."
+    except Exception as error:
+        return "error", "Error al vaciar la descripción (" + type(error).__name__ + ")."
+
+
+def set_preparation_details(estado, acciones):
+    """Antepone las acciones de preparación a la lista de actividades.
+
+    Usa numero 0 para no chocar con la numeración 1..N de las actividades
+    (actualizar_detalle_actividad busca por número, no por posición).
+    """
+    if not acciones:
+        return
+
+    filas = [
+        {
+            "numero": 0,
+            "nombre": "Preparación: " + accion["nombre"],
+            "estado": accion["estado"],
+            "error": accion["detalle"] if accion["estado"] == "error" else "",
+        }
+        for accion in acciones
+    ]
+
+    detalle = estado.get("detalle_actividades", [])
+    estado["detalle_actividades"] = filas + detalle
+
+
+def report_preparation_actions(ruta_reporte, acciones):
+    """Agrega las acciones de preparación al reporte CSV del cargue."""
+    resultados = {"ok": "OK", "omitido": "OMITIDO", "error": "ERROR"}
+
+    for indice, accion in enumerate(acciones, start=1):
+        actividad = {
+            "fila_excel": "Prep " + str(indice),
+            "hoja": "",
+            "programa": "",
+            "curso": "",
+            "semana": "",
+            "unidad": "",
+            "nombre": "Preparación: " + accion["nombre"],
+            "categoria_prizma": "Preparación",
+            "tipo_archivo": "Preparación",
+        }
+        try:
+            guardar_resultado(
+                ruta_reporte,
+                actividad,
+                resultados.get(accion["estado"], "ERROR"),
+                accion["detalle"] or "",
+            )
+        except Exception:
+            # Un fallo en el reporte no debe romper el cargue.
+            pass
+
+
+def open_prizma_home(pagina):
+    """Vuelve al inicio de PRIZMA para poder entrar a Actividades después."""
+    pagina.goto(URL_PRIZMA, wait_until="domcontentloaded", timeout=60000)
+    pagina.wait_for_timeout(1500)
+    return True
+
+
+def prepare_assignment(pagina, preparacion, ruta_zip, ruta_syllabus, carpeta_temp):
+    """Aplica la preparación de la asignatura en su formulario de edición.
+
+    Navega a «Editar Asignatura por pensum», deja VACÍO el campo de
+    descripción (sin importar el texto que traiga), sube el syllabus (si
+    vino en el cargue) y carga los videos de intro/cierre extraídos del
+    ZIP; al final guarda el formulario.
+
+    Args:
+        pagina: pestaña de PRIZMA ya autenticada (sin módulo Actividades).
+        preparacion: dict con claves "curso" (dict de datos académicos),
+            "syllabus" (bool), "video_intro" y "video_cierre" (miembros del
+            ZIP o "").
+        ruta_zip: ruta del ZIP de recursos.
+        ruta_syllabus: ruta local del PDF del syllabus ("" si no hay).
+        carpeta_temp: carpeta temporal del trabajo (para extraer videos).
+
+    Returns:
+        lista de acciones [{"nombre", "estado", "detalle"}]; nunca lanza
+        por fallos individuales (se capturan y quedan como "error").
+
+    Raises:
+        RuntimeError: si PRIZMA no abre el formulario de la asignatura.
+    """
+    preparacion = preparacion if isinstance(preparacion, dict) else {}
+    curso = preparacion.get("curso") or {}
+
+    # La navegación puede abrir pestañas: se adopta la última si cambia.
+    try:
+        paginas_previas = list(pagina.context.pages)
+    except Exception:
+        paginas_previas = []
+    seleccionar_curso_prizma(pagina, curso, open_action="edit")
+    pagina = _adoptar_pestana_abierta(pagina, paginas_previas)
+
+    if not wait_for_assignment_form(pagina):
+        raise RuntimeError(
+            "PRIZMA no mostró el formulario «Editar Asignatura por pensum»."
+        )
+
+    acciones = []
+
+    def registrar(nombre, estado, detalle):
+        acciones.append(
+            {"nombre": nombre, "estado": estado, "detalle": detalle}
+        )
+        marca = {"ok": "✅", "omitido": "➖", "error": "❌"}.get(estado, "•")
+        print(marca + " Preparación " + nombre + ": " + (detalle or estado))
+
+    # 1. Descripción: siempre dejar el campo VACÍO (decisión del usuario
+    #    2026-11-03: antes solo se borraba el placeholder «No disponible»).
+    try:
+        estado_desc, detalle_desc = empty_description_field(pagina)
+        registrar("Descripción", estado_desc, detalle_desc)
+    except Exception as error:
+        registrar(
+            "Descripción",
+            "error",
+            "Error al revisar la descripción ("
+            + type(error).__name__
+            + ").",
+        )
+
+    # 2. Syllabus (PDF aparte del ZIP).
+    try:
+        if not ruta_syllabus:
+            registrar("Syllabus", "omitido", "No se adjuntó syllabus en el cargue.")
+        else:
+            indice = find_field_file_input(pagina, ASSIGNMENT_SYLLABUS_LABELS)
+            ok, motivo = upload_file_to_field(pagina, indice, ruta_syllabus, "Syllabus")
+            if ok:
+                registrar("Syllabus", "ok", "Syllabus cargado en la asignatura.")
+            else:
+                registrar("Syllabus", "error", motivo)
+    except Exception as error:
+        registrar(
+            "Syllabus",
+            "error",
+            "Error al subir el syllabus (" + type(error).__name__ + ").",
+        )
+
+    # 3. Videos de intro y cierre (tomados del ZIP adjunto).
+    videos = (
+        ("Video de introductorio", "video_intro", ASSIGNMENT_INTRO_VIDEO_LABELS, "intro"),
+        ("Video de cierre", "video_cierre", ASSIGNMENT_CLOSING_VIDEO_LABELS, "cierre"),
+    )
+    for nombre_video, clave, etiquetas, sufijo in videos:
+        miembro = str(preparacion.get(clave) or "")
+        try:
+            if not miembro:
+                registrar(
+                    nombre_video,
+                    "omitido",
+                    "El ZIP no incluye este video.",
+                )
+                continue
+
+            ruta_video = os.path.join(
+                carpeta_temp,
+                "preparacion_" + sufijo + "_" + os.path.basename(miembro),
+            )
+            extraido, motivo = extract_zip_member(ruta_zip, miembro, ruta_video)
+            if not extraido:
+                registrar(nombre_video, "error", motivo)
+                continue
+
+            indice = find_field_file_input(pagina, etiquetas)
+            ok, motivo = upload_file_to_field(
+                pagina, indice, ruta_video, nombre_video
+            )
+            if ok:
+                registrar(
+                    nombre_video,
+                    "ok",
+                    os.path.basename(miembro) + " cargado en la asignatura.",
+                )
+            else:
+                registrar(nombre_video, "error", motivo)
+        except Exception as error:
+            registrar(
+                nombre_video,
+                "error",
+                "Error al cargar el video (" + type(error).__name__ + ").",
+            )
+
+    # Guardar solo si algo cambió en el formulario.
+    if any(accion["estado"] == "ok" for accion in acciones):
+        try:
+            ok, motivo = save_assignment_form(pagina)
+            if ok:
+                registrar(
+                    "Guardar cambios",
+                    "ok",
+                    "Formulario de la asignatura guardado en PRIZMA.",
+                )
+            else:
+                registrar("Guardar cambios", "error", motivo)
+        except Exception as error:
+            registrar(
+                "Guardar cambios",
+                "error",
+                "Error al guardar el formulario ("
+                + type(error).__name__
+                + ").",
+            )
+
+    return acciones
+
+
 def ejecutar_cargue(
     ruta_excel,
     ruta_zip,
@@ -6690,6 +7460,8 @@ def ejecutar_cargue(
     estado,
     seleccion_actividades=None,
     formato_recurso=FORMATO_RECURSO_POR_DEFECTO,
+    preparacion=None,
+    ruta_syllabus="",
 ):
     navegador = None
 
@@ -6760,6 +7532,28 @@ def ejecutar_cargue(
         actividades_a_procesar = actividades
         preparar_detalle_actividades(estado, actividades_a_procesar)
 
+        # Preparación opcional de la asignatura (syllabus, videos de
+        # intro/cierre del ZIP y descripción). Solo se ejecuta si vienen los
+        # datos académicos completos; si algo falla se continúa el cargue y
+        # el fallo queda como aviso.
+        preparacion = preparacion if isinstance(preparacion, dict) else {}
+        curso_preparacion = preparacion.get("curso") or {}
+        preparacion_activa = all(
+            str(curso_preparacion.get(campo) or "").strip()
+            for campo in ("programa", "pensum", "nivel", "asignatura")
+        )
+        avisos_preparacion = []
+        if not preparacion_activa and (
+            ruta_syllabus
+            or preparacion.get("video_intro")
+            or preparacion.get("video_cierre")
+        ):
+            avisos_preparacion.append(
+                "Se adjuntaron syllabus o videos de intro/cierre, pero no se "
+                "indicaron línea académica y nivel de pensum: la preparación "
+                "de la asignatura se omitió."
+            )
+
         actualizar_estado(
             estado,
             etapa="login",
@@ -6788,7 +7582,7 @@ def ejecutar_cargue(
                     captura,
                 )
 
-            def abrir_sesion_limpia(motivo=""):
+            def abrir_sesion_limpia(motivo="", abrir_actividades=True):
                 nonlocal navegador
                 estado_navegacion["categoria_actual"] = None
                 if motivo:
@@ -6812,10 +7606,20 @@ def ejecutar_cargue(
                     nueva_pagina,
                     usuario_prizma,
                     contrasena_prizma,
+                    abrir_actividades=abrir_actividades,
                 )
                 return nueva_pagina
 
-            pagina = _abrir_sesion_inicial(abrir_sesion_limpia, estado)
+            # Con preparación activa la primera sesión entra sin módulo
+            # Actividades: primero se edita la ficha del curso y luego se
+            # continúa con la misma sesión al listado de actividades.
+            def abrir_sesion_inicial_cargue(motivo=""):
+                return abrir_sesion_limpia(
+                    motivo,
+                    abrir_actividades=not preparacion_activa,
+                )
+
+            pagina = _abrir_sesion_inicial(abrir_sesion_inicial_cargue, estado)
 
             if pagina is None:
                 actualizar_estado(
@@ -6825,6 +7629,68 @@ def ejecutar_cargue(
                     terminado=True,
                 )
                 return
+
+            if preparacion_activa:
+                actualizar_estado(
+                    estado,
+                    etapa="preparando",
+                    mensaje=(
+                        "Preparando la asignatura en PRIZMA "
+                        "(syllabus, videos y descripción)..."
+                    ),
+                )
+
+                try:
+                    acciones_preparacion = prepare_assignment(
+                        pagina,
+                        preparacion,
+                        ruta_zip,
+                        ruta_syllabus,
+                        carpeta_temp,
+                    )
+                except Exception as error:
+                    # Un fallo de navegación no detiene el cargue: queda
+                    # como aviso y se continúa con recursos.
+                    traceback.print_exc()
+                    acciones_preparacion = [
+                        {
+                            "nombre": "Preparación de la asignatura",
+                            "estado": "error",
+                            "detalle": str(error).strip() or type(error).__name__,
+                        }
+                    ]
+
+                set_preparation_details(estado, acciones_preparacion)
+                report_preparation_actions(ruta_reporte, acciones_preparacion)
+
+                for accion_preparacion in acciones_preparacion:
+                    if accion_preparacion["estado"] == "error":
+                        avisos_preparacion.append(
+                            accion_preparacion["nombre"]
+                            + ": "
+                            + accion_preparacion["detalle"]
+                        )
+
+                if _cancelacion_solicitada(estado):
+                    actualizar_estado(
+                        estado,
+                        etapa="cancelado",
+                        mensaje="Proceso cancelado por el usuario durante la preparación de la asignatura.",
+                        terminado=True,
+                    )
+                    return
+
+                # Continuar con la misma sesión al módulo Actividades; si no
+                # es posible, se reabre la sesión completa.
+                try:
+                    open_prizma_home(pagina)
+                    enter_activities_module(pagina)
+                    estado_navegacion["categoria_actual"] = None
+                except Exception:
+                    traceback.print_exc()
+                    pagina = abrir_sesion_limpia(
+                        "no se pudo abrir Actividades tras la preparación"
+                    )
 
             actualizar_estado(
                 estado,
@@ -7018,13 +7884,17 @@ def ejecutar_cargue(
             except Exception:
                 pass
 
+        mensaje_final = (
+            "Cargue completo finalizado. "
+            f"Exitosas: {exitosas}. Errores: {errores}."
+        )
+        if avisos_preparacion:
+            mensaje_final += " Avisos de preparación: " + " | ".join(avisos_preparacion)
+
         actualizar_estado(
             estado,
             etapa="finalizado",
-            mensaje=(
-                "Cargue completo finalizado. "
-                f"Exitosas: {exitosas}. Errores: {errores}."
-            ),
+            mensaje=mensaje_final,
             terminado=True,
         )
 

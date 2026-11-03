@@ -54,7 +54,7 @@ def _zip_recursos():
     return salida.getvalue()
 
 
-def _analizar(datos=None, matriz=None, recursos=None, test_docx=None):
+def _analizar(datos=None, matriz=None, recursos=None, test_docx=None, syllabus=None):
     archivos = {}
     if matriz is not None:
         archivos["matriz_archivo"] = ("matriz.xlsx", io.BytesIO(matriz), "application/octet-stream")
@@ -62,6 +62,15 @@ def _analizar(datos=None, matriz=None, recursos=None, test_docx=None):
         archivos["recursos"] = ("recursos.zip", io.BytesIO(recursos), "application/zip")
     if test_docx is not None:
         archivos["test_archivo_docx"] = ("test.docx", io.BytesIO(test_docx), "application/octet-stream")
+    if syllabus is not None:
+        # bytes simples usan el nombre estándar; una tupla permite (nombre, bytes).
+        if isinstance(syllabus, tuple):
+            nombre_syllabus, bytes_syllabus = syllabus
+        else:
+            nombre_syllabus, bytes_syllabus = "syllabus.pdf", syllabus
+        archivos["syllabus_archivo"] = (
+            nombre_syllabus, io.BytesIO(bytes_syllabus), "application/pdf",
+        )
     previos = set(TRABAJOS)
     respuesta = _cliente().post(
         "/analizar",
@@ -116,11 +125,22 @@ def test_analyze_file_mode_registers_job_and_saves_files(limpiar_trabajos):
         "total", "procesadas", "exitosas", "errores", "terminado",
         "detalle_actividades", "nombre_matriz", "usuario_app", "cursos",
         "historial_registrado", "creado_en", "cancelar_solicitado",
-        "resultado_analisis",
+        "resultado_analisis", "preparacion", "ruta_syllabus",
+    }
+
+    assert trabajo["ruta_syllabus"] == ""
+    assert trabajo["preparacion"] == {
+        "syllabus": False,
+        "video_intro": "",
+        "video_cierre": "",
+        "linea_academica": "",
+        "nivel": "",
+        "curso": None,
     }
 
     resultado = trabajo["resultado_analisis"]
-    assert set(resultado) == {"hojas", "zip", "nombre_matriz", "formato_recurso"}
+    assert set(resultado) == {"hojas", "zip", "nombre_matriz", "formato_recurso", "preparacion"}
+    assert resultado["preparacion"] == trabajo["preparacion"]
     assert trabajo["formato_recurso"] == resultado["formato_recurso"] == "H5P"
     assert trabajo["id"] in respuesta.text
     assert "Previsualización y títulos H5P" in respuesta.text
@@ -248,3 +268,148 @@ def test_html_file_upload_uses_zip_without_external_resource_validation(limpiar_
     )
 
     assert resultado["formato_recurso"] == "HTML"
+
+
+# ============================================================
+# PREPARACIÓN DE LA ASIGNATURA (syllabus + línea académica)
+# ============================================================
+
+_LINEA_ACADEMICA = "V1130 11301 30S01 COMPETENCIAS MATEMATICAS I"
+
+
+def _zip_con_videos():
+    salida = io.BytesIO()
+    with zipfile.ZipFile(salida, "w") as archivo:
+        archivo.writestr("Infografia_de_costos.h5p", b"h5p")
+        archivo.writestr("Lectura guía.pdf", b"%PDF")
+        archivo.writestr("Video Introductorio.webm", b"webm-intro")
+        archivo.writestr("video_cierre.mp4", b"mp4-cierre")
+    return salida.getvalue()
+
+
+def test_analyze_stores_syllabus_and_academic_line(limpiar_trabajos):
+    respuesta, nuevos = _analizar(
+        {
+            "ovi": "1", "ova": "1", "retos": "1",
+            "linea_academica": _LINEA_ACADEMICA,
+            "nivel_pensum": "Nivel 1",
+        },
+        matriz=_matriz_xlsx(),
+        recursos=_zip_con_videos(),
+        syllabus=b"%PDF-1.4 syllabus",
+    )
+
+    assert respuesta.status_code == 200
+    assert len(nuevos) == 1
+    trabajo = nuevos[0]
+
+    assert trabajo["ruta_syllabus"] == os.path.join(UPLOADS_DIR, trabajo["id"], "syllabus.pdf")
+    assert os.path.isfile(trabajo["ruta_syllabus"])
+
+    preparacion = trabajo["preparacion"]
+    assert preparacion["syllabus"] is True
+    assert preparacion["linea_academica"] == _LINEA_ACADEMICA
+    assert preparacion["nivel"] == "Nivel 1"
+    assert preparacion["video_intro"] == "Video Introductorio.webm"
+    assert preparacion["video_cierre"] == "video_cierre.mp4"
+    assert preparacion["curso"] == {
+        "programa": "V1130",
+        "pensum": "11301",
+        "codigo_asignatura": "30S01",
+        "asignatura": "COMPETENCIAS MATEMATICAS I",
+        "nivel": "Nivel 1",
+    }
+
+    # La revisión muestra el bloque de preparación con el curso y los videos.
+    assert "Preparación de la asignatura" in respuesta.text
+    assert "Video Introductorio.webm" in respuesta.text
+
+
+def test_analyze_detects_zip_videos_without_preparation_line(limpiar_trabajos):
+    respuesta, nuevos = _analizar(
+        {"ovi": "1", "ova": "1", "retos": "1"},
+        matriz=_matriz_xlsx(),
+        recursos=_zip_con_videos(),
+    )
+
+    assert respuesta.status_code == 200
+    preparacion = nuevos[0]["preparacion"]
+    assert preparacion["video_intro"] == "Video Introductorio.webm"
+    assert preparacion["video_cierre"] == "video_cierre.mp4"
+    assert preparacion["curso"] is None
+    # Sin línea académica se avisa, pero no se bloquea el cargue.
+    assert "Preparación omitida" in respuesta.text
+
+
+def test_analyze_rejects_syllabus_without_academic_line(limpiar_trabajos):
+    respuesta, nuevos = _analizar(
+        {"ovi": "1", "ova": "1", "retos": "1"},
+        matriz=_matriz_xlsx(),
+        recursos=_zip_recursos(),
+        syllabus=b"%PDF-1.4 syllabus",
+    )
+
+    assert "El syllabus se carga en la ficha de la asignatura" in respuesta.text
+    assert nuevos == []
+
+
+def test_analyze_rejects_partial_academic_data(limpiar_trabajos):
+    respuesta, nuevos = _analizar(
+        {
+            "ovi": "1", "ova": "1", "retos": "1",
+            "linea_academica": _LINEA_ACADEMICA,
+        },
+        matriz=_matriz_xlsx(),
+        recursos=_zip_recursos(),
+    )
+
+    assert "completa «Línea académica» y" in respuesta.text
+    assert nuevos == []
+
+
+def test_analyze_rejects_unparseable_academic_line(limpiar_trabajos):
+    respuesta, nuevos = _analizar(
+        {
+            "ovi": "1", "ova": "1", "retos": "1",
+            "linea_academica": "solo una palabra",
+            "nivel_pensum": "Nivel 1",
+        },
+        matriz=_matriz_xlsx(),
+        recursos=_zip_recursos(),
+    )
+
+    assert "La «Línea académica» debe ser" in respuesta.text
+    assert nuevos == []
+
+
+def test_analyze_rejects_syllabus_when_only_test_selected(limpiar_trabajos):
+    respuesta, nuevos = _analizar(
+        {
+            "test_evaluativo": "1",
+            "linea_academica": _LINEA_ACADEMICA,
+            "nivel_pensum": "Nivel 1",
+        },
+        matriz=_matriz_xlsx(),
+        recursos=_zip_recursos(),
+        syllabus=b"%PDF-1.4 syllabus",
+        test_docx=b"contenido docx de prueba",
+    )
+
+    assert "con solo Test Evaluativo no se" in respuesta.text
+    assert nuevos == []
+
+
+def test_analyze_rejects_non_pdf_syllabus(limpiar_trabajos):
+    respuesta, nuevos = _analizar(
+        {
+            "ovi": "1", "ova": "1", "retos": "1",
+            "linea_academica": _LINEA_ACADEMICA,
+            "nivel_pensum": "Nivel 1",
+        },
+        matriz=_matriz_xlsx(),
+        recursos=_zip_recursos(),
+        syllabus=("syllabus.txt", b"no soy un pdf"),
+    )
+
+    assert "El syllabus debe ser un archivo PDF." in respuesta.text
+    assert nuevos == []

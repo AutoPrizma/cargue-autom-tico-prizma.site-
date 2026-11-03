@@ -21,6 +21,7 @@ from auto_prizma.services.upload_jobs import create_analyzed_job
 from auto_prizma.services.h5p_preview import preview_h5p_titles
 from auto_prizma.services.matrix_analysis import (
     _normalizar_contenido_matriz_archivo,
+    _parsear_datos_academicos,
     analizar_excel,
     analizar_zip,
 )
@@ -53,6 +54,9 @@ async def analizar(
     test_evaluativo: str | None = Form(default=None),
     test_archivo_docx: UploadFile | None = File(default=None),
     formato_recurso: str = Form(default="H5P"),
+    syllabus_archivo: UploadFile | None = File(default=None),
+    linea_academica: str = Form(default=""),
+    nivel_pensum: str = Form(default=""),
 ):
 
     try:
@@ -66,6 +70,57 @@ async def analizar(
             return generar_html(
                 error="Selecciona al menos una categoría: OVI, OVA, Retos Evaluativos o Test Evaluativo."
             )
+
+        # ====================================================
+        # PREPARACIÓN DE LA ASIGNATURA (syllabus + línea académica)
+        # ====================================================
+        # Todo es opcional; si no hay línea académica ni nivel, la
+        # preparación se omite y el cargue continúa normal.
+        linea_academica = str(linea_academica or "").strip()
+        nivel_pensum = str(nivel_pensum or "").strip()
+
+        if bool(linea_academica) != bool(nivel_pensum):
+            return generar_html(
+                error=(
+                    "Para preparar la asignatura completa «Línea académica» y "
+                    "«Nivel de pensum», o deja ambos vacíos."
+                )
+            )
+
+        if linea_academica and _parsear_datos_academicos(linea_academica) is None:
+            return generar_html(
+                error=(
+                    "La «Línea académica» debe ser: código de programa, código "
+                    "de pensum, código de asignatura y nombre de la asignatura "
+                    "(p. ej. «V1130 11301 30S01 COMPETENCIAS MATEMÁTICAS I»)."
+                )
+            )
+
+        contenido_syllabus = None
+        nombre_syllabus = ""
+        if syllabus_archivo is not None and str(syllabus_archivo.filename or "").strip():
+            if not procesar_recursos:
+                return generar_html(
+                    error=(
+                        "El syllabus se adjunta junto con el cargue de recursos "
+                        "(OVI, OVA o Retos); con solo Test Evaluativo no se "
+                        "prepara la asignatura."
+                    )
+                )
+            if not linea_academica:
+                return generar_html(
+                    error=(
+                        "El syllabus se carga en la ficha de la asignatura: "
+                        "indica también la «Línea académica» y el «Nivel de "
+                        "pensum», o quita el syllabus."
+                    )
+                )
+            nombre_syllabus = str(syllabus_archivo.filename or "").strip()
+            if not nombre_syllabus.lower().endswith(".pdf"):
+                return generar_html(error="El syllabus debe ser un archivo PDF.")
+            contenido_syllabus = await syllabus_archivo.read()
+            if not contenido_syllabus:
+                return generar_html(error="El archivo de syllabus está vacío.")
 
         test_job_id = None
         nom_test = ""
@@ -184,6 +239,10 @@ async def analizar(
             test_job_id=test_job_id,
             test_info=test_info,
             formato_recurso=formato_recurso,
+            contenido_syllabus=contenido_syllabus,
+            nombre_syllabus=nombre_syllabus,
+            linea_academica=linea_academica,
+            nivel_pensum=nivel_pensum,
         )
         resultado_revision = dict(resultado)
         if revision_h5p is not None:

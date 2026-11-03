@@ -99,6 +99,35 @@ def _pantalla_inicio(error, e):
                 </label>
                 {_archivo_listo("archivo-zip", "zip")}
             </section>
+
+            <section class="tarjeta-archivo">
+                <div class="archivo-cabecera">
+                    <span class="icono-tile ambar">{icon("libro")}</span>
+                    <div>
+                        <h2>Syllabus y preparación</h2>
+                        <p>Opcional: syllabus PDF y datos para preparar la ficha del curso en PRIZMA.</p>
+                    </div>
+                </div>
+                <label class="dropzone zona-drop" for="archivo-syllabus" data-input="archivo-syllabus">
+                    {icon("subir", "icono icono-drop")}
+                    <strong>Selecciona o arrastra el syllabus</strong>
+                    <small>Archivo PDF (opcional)</small>
+                    <span class="boton">Seleccionar archivo</span>
+                    <input id="archivo-syllabus" type="file" name="syllabus_archivo" accept=".pdf">
+                </label>
+                {_archivo_listo("archivo-syllabus", "libro")}
+                <div class="campos-preparacion">
+                    <label>Línea académica
+                        <input type="text" name="linea_academica" autocomplete="off"
+                            placeholder="V1130 11301 30S01 COMPETENCIAS MATEMÁTICAS I">
+                    </label>
+                    <label>Nivel de pensum
+                        <input type="text" name="nivel_pensum" autocomplete="off"
+                            placeholder="Nivel 1">
+                    </label>
+                    <small class="nota-campos">Si los dejas vacíos, la preparación se omite. Los videos de intro y cierre se toman del ZIP.</small>
+                </div>
+            </section>
         </div>
 
         <div class="separador"></div>
@@ -196,6 +225,100 @@ _CARGADOR = """
     </div>
 </div>
 """
+
+
+def _preparation_block(preparacion):
+    """Panel de revisión con lo que se preparará en la ficha del curso.
+
+    Muestra syllabus, videos de intro/cierre detectados en el ZIP, si se
+    dejará vacía la descripción y los datos académicos. Si hay videos sin
+    línea académica, avisa que la preparación se omitirá.
+    """
+    if not isinstance(preparacion, dict):
+        return ""
+
+    def e(valor):
+        return html.escape(str(valor or ""))
+
+    tiene_syllabus = bool(preparacion.get("syllabus"))
+    video_intro = str(preparacion.get("video_intro") or "")
+    video_cierre = str(preparacion.get("video_cierre") or "")
+    linea = str(preparacion.get("linea_academica") or "").strip()
+    nivel = str(preparacion.get("nivel") or "").strip()
+    curso = preparacion.get("curso") or {}
+
+    if not (tiene_syllabus or video_intro or video_cierre or linea):
+        return ""
+
+    def fila(estado, texto):
+        marca = {
+            "ok": ('badge-verde', "Se cargará"),
+            "aviso": ('badge-ambar', "Aviso"),
+            "omitido": ('badge-gris', "Omitido"),
+        }.get(estado, ('badge-gris', "—"))
+        return (
+            "<tr><td><span class=\"" + marca[0] + "\">" + marca[1] + "</span></td>"
+            + "<td>" + e(texto) + "</td></tr>"
+        )
+
+    filas = ""
+
+    if linea and nivel:
+        nombre_curso = str(curso.get("asignatura") or "").strip()
+        filas += fila(
+            "ok",
+            "Datos académicos: " + (nombre_curso or linea)
+            + " · Nivel " + nivel,
+        )
+    else:
+        filas += fila(
+            "omitido",
+            "Sin línea académica y nivel: la ficha de la asignatura no se preparará.",
+        )
+
+    preparacion_activa = bool(linea and nivel)
+
+    if tiene_syllabus and preparacion_activa:
+        filas += fila("ok", "Syllabus: el PDF adjunto se subirá al campo Syllabus.")
+    elif tiene_syllabus:
+        filas += fila("aviso", "Syllabus adjunto, pero falta la línea académica: no se subirá.")
+    else:
+        filas += fila("omitido", "Syllabus: no se adjuntó ninguno.")
+
+    if preparacion_activa:
+        if video_intro:
+            filas += fila("ok", "Video de introductorio: " + video_intro + " (desde el ZIP).")
+        else:
+            filas += fila("omitido", "Video de introductorio: el ZIP no incluye uno.")
+        if video_cierre:
+            filas += fila("ok", "Video de cierre: " + video_cierre + " (desde el ZIP).")
+        else:
+            filas += fila("omitido", "Video de cierre: el ZIP no incluye uno.")
+        filas += fila("ok", "Descripción: se dejará el campo vacío.")
+    else:
+        if video_intro or video_cierre:
+            filas += fila(
+                "aviso",
+                "El ZIP trae videos de intro/cierre, pero sin línea académica no se cargan.",
+            )
+
+    aviso_extra = ""
+    if not preparacion_activa and (video_intro or video_cierre):
+        aviso_extra = (
+            '<div class="aviso ambar">' + icon("alerta-circulo")
+            + "<div><strong>Preparación omitida</strong><p>Para cargar los videos de "
+            "intro/cierre y el syllabus, vuelve a Inicio y completa la línea académica "
+            "y el nivel de pensum en la tarjeta «Syllabus y preparación».</p></div></div>"
+        )
+
+    return (
+        '<section class="panel preparacion-panel"><div class="titulo-bloque">'
+        "<h2>Preparación de la asignatura</h2>"
+        "<p>Antes de subir recursos, PRIZMA recibirá estos cambios en la ficha del curso.</p>"
+        '</div><div class="tabla-scroll"><table class="tabla"><thead><tr>'
+        "<th>Estado</th><th>Acción</th></tr></thead><tbody>"
+        + filas + "</tbody></table></div>" + aviso_extra + "</section>"
+    )
 
 
 def generar_html(
@@ -408,6 +531,8 @@ def generar_html(
         </section>
         """
 
+    bloque_preparacion = _preparation_block(resultado.get("preparacion"))
+
     bloque_revision_h5p = ""
     revision_h5p = resultado.get("revision_h5p") or {}
     if revision_h5p:
@@ -469,6 +594,7 @@ def generar_html(
     </section>
 
     {bloque_test_html}
+    {bloque_preparacion}
     {bloque_revision_h5p}
     {bloque_advertencias_revision}
     {bloque_error_revision}
@@ -632,7 +758,7 @@ _CSS_INICIO = r"""
 .opciones-modo.compacto .opcion-texto small { font-size: 13px; }
 .opciones-modo.compacto .icono-opcion { width: 24px; height: 24px; }
 
-.grid-archivos { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; align-items: stretch; }
+.grid-archivos { display: grid; grid-template-columns: repeat(3, 1fr); gap: 24px; align-items: stretch; }
 .tarjeta-archivo {
   display: grid; gap: 20px; min-width: 0; align-content: start;
   padding: 26px; border: 1px solid var(--borde); border-radius: 16px; background: var(--panel);
@@ -672,6 +798,15 @@ _CSS_INICIO = r"""
 .icono-listo circle { fill: var(--verde); stroke: var(--verde); }
 .icono-listo path { stroke: var(--boton-texto); stroke-width: 2.4; }
 .archivo-listo .boton-icono { border-left: 1px solid var(--borde); border-radius: 0 10px 10px 0; }
+
+.campos-preparacion { display: grid; gap: 12px; }
+.campos-preparacion label { display: grid; gap: 6px; font-size: 14px; font-weight: 700; color: var(--texto); }
+.campos-preparacion input[type="text"] {
+  padding: 11px 13px; border: 1px solid var(--borde); border-radius: 12px;
+  background: var(--panel-2); color: var(--texto); font-size: 14.5px; font-family: inherit;
+}
+.campos-preparacion input[type="text"]:focus { outline: 2px solid var(--acento); outline-offset: 1px; }
+.campos-preparacion .nota-campos { font-size: 12.5px; font-weight: 400; color: var(--muted); line-height: 1.5; }
 
 .separador { height: 1px; background: var(--borde); }
 .seccion-tipos { display: grid; gap: 18px; }
@@ -845,6 +980,7 @@ _CSS_INICIO = r"""
 .volver-inicio { justify-self: start; }
 
 @media (max-width: 1200px) {
+  .grid-archivos { grid-template-columns: 1fr 1fr; }
   .grid-tipos { grid-template-columns: repeat(2, 1fr); }
   .resumen-grid { grid-template-columns: repeat(3, 1fr); }
   .revision-grid { grid-template-columns: 1fr; }

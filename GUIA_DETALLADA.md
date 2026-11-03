@@ -31,6 +31,7 @@ Construida con **FastAPI** y **Playwright (Chromium)**. Se despliega en **Railwa
 - **Acceso local directo.** En el mismo equipo no se solicita cuenta de Auto Prizma; los despliegues remotos conservan cuentas y aislamiento por usuario.
 - **Entrada solo por archivos.** La matriz se sube como Excel/CSV, los recursos como ZIP y los tests como Word (.docx). No hay conexión ni descarga desde cuentas externas.
 - **Análisis previo.** Antes de cargar nada, muestra las actividades reconocidas y revisa los recursos incluidos en el ZIP.
+- **Preparación de la asignatura (opcional).** Junto con la matriz y el ZIP puedes adjuntar un syllabus PDF e indicar línea académica y nivel de pensum; antes de subir recursos, la app actualiza la ficha del curso en PRIZMA (syllabus, videos de intro/cierre del ZIP y **campo de descripción vaciado**). Si algo falla, el cargue continúa y queda un aviso visible.
 - **Selección de actividades.** El usuario elige qué actividades cargar después de revisar el análisis.
 - **Cola de cargues.** Hasta **2 cargues simultáneos**; los demás esperan en cola y se muestra su posición.
 - **Seguimiento en vivo.** Página de progreso por cargue, con opción de cancelar.
@@ -76,7 +77,7 @@ flowchart LR
 2. Suministra la matriz y el ZIP, y marca las categorías a cargar (OVI, OVA, Retos, Test evaluativo).
 3. La aplicación analiza la matriz, relaciona cada actividad con su recurso y muestra el resultado.
 4. El usuario selecciona las actividades, ingresa sus credenciales de PRIZMA e inicia el cargue.
-5. El cargue entra en la cola; un navegador Chromium sin interfaz entra a PRIZMA y carga cada actividad.
+5. El cargue entra en la cola; un navegador Chromium sin interfaz entra a PRIZMA, aplica primero la preparación opcional de la ficha (syllabus, videos y descripción) y carga cada actividad.
 6. Al terminar se guarda el reporte y queda registrado en el historial.
 
 ### Auditoría profunda de un curso PRIZMA ya publicado
@@ -348,13 +349,26 @@ Las filas sin nombre o sin categoría se omiten.
 ### Pasos en la aplicación
 
 1. **Matriz:** selecciona un archivo local `.xlsx` o `.csv`. Los recursos se adjuntan desde el ZIP seleccionado; las referencias de la columna G no se consultan.
-2. **Recursos:** subir el ZIP con los archivos H5P (o HTML) y PDF de las actividades.
-3. **Categorías:** marcar OVI, OVA, Retos evaluativos y/o Test evaluativo, y elegir el **formato de los recursos interactivos**: *H5P* o *HTML* (ver abajo).
-4. **Analizar:** revisar las actividades encontradas, el recurso asignado a cada una y las advertencias.
-5. **Iniciar:** seleccionar las actividades, ingresar usuario y contraseña de PRIZMA e iniciar. Si ya hay 2 cargues en curso, el nuevo espera en cola.
-6. **Seguimiento:** ver el avance en *Cargue actual*; se puede cancelar en cualquier momento.
+2. **Recursos:** subir el ZIP con los archivos H5P (o HTML) y PDF de las actividades. El ZIP debe traer también los videos de intro/cierre si quieres cargarlos a la ficha.
+3. **Syllabus y preparación (opcional):** adjunta el PDF del syllabus y completa **Línea académica** (`código de programa código de pensum código de asignatura nombre de asignatura`) y **Nivel de pensum**. Ambos campos van juntos: uno vacío y otro con valor no se acepta; si los dejas vacíos, la preparación se omite y el cargue sigue normal.
+4. **Categorías:** marcar OVI, OVA, Retos evaluativos y/o Test evaluativo, y elegir el **formato de los recursos interactivos**: *H5P* o *HTML* (ver abajo).
+5. **Analizar:** revisar las actividades encontradas, el recurso asignado a cada una, las advertencias y el bloque **Preparación de la asignatura** con lo que se hará en la ficha del curso.
+6. **Iniciar:** seleccionar las actividades, ingresar usuario y contraseña de PRIZMA e iniciar. Si ya hay 2 cargues en curso, el nuevo espera en cola.
+7. **Seguimiento:** ver el avance en *Cargue actual*; se puede cancelar en cualquier momento. La preparación aparece primero en la lista (con el estado ➖ *Omitida* si algo no aplica).
 
 Arriba a la derecha está el botón de tema claro/oscuro. El tema claro usa superficies blancas y controles primarios azul marino; el oscuro conserva la misma disposición con acento morado. Los indicadores de Inicio y la tarjeta del menú lateral muestran el estado real: *Chromium activo* si el navegador de Playwright está instalado y *Servicio estable* si PRIZMA responde (se comprueba cada pocos minutos). *Ver guía* abre los pasos y consejos. En *Reportes* se puede buscar, filtrar por programa, curso y fecha, ordenar columnas y copiar el enlace de un reporte; en el detalle, buscar en la tabla y copiar la observación de una fila.
+
+### Preparación de la asignatura (syllabus y videos)
+
+La tarjeta **Syllabus y preparación** del formulario es opcional y va junto a *Archivo de la matriz* y *ZIP de recursos*:
+
+- **Syllabus:** PDF no vacío; se sube al campo *Syllabus* de la ficha del curso. Requiere línea académica y no se acepta si marcaste **solo** Test Evaluativo (la preparación va con el cargue de recursos).
+- **Línea académica y Nivel de pensum:** van juntos (ambos o ninguno) y la línea debe ser `código de programa código de pensum código de asignatura nombre de asignatura`, p. ej. `V1130 11301 30S01 COMPETENCIAS MATEMÁTICAS I`. Con ambos, PRIZMA recibe además el nivel al buscar la asignatura.
+- **Videos de intro/cierre:** no se adjuntan aparte; se detectan automáticamente en el ZIP (nombres con «intro»/«cierre»/«closing» y extensión de video) y se suben a los campos de video de la ficha.
+
+La página de revisión muestra el bloque **Preparación de la asignatura** con cada acción y su estado. Si el ZIP trae videos pero no completaste la línea académica, aparece el aviso **Preparación omitida** y el cargue continúa igual (sin tocar la ficha).
+
+Al iniciar, la preparación se ejecuta **antes** de subir los recursos: abre la ficha de la asignatura, reemplaza syllabus y videos, **deja vacío el campo de descripción** (sin importar el texto que traiga; el contenido anterior se informa en el detalle), guarda, y solo entonces entra a Actividades y carga OVI/OVA/Retos. Cada acción queda en la lista de progreso (➖ *Omitida* cuando no aplica) y en el reporte CSV como fila `Prep N` con categoría *Preparación*. **Si una acción de preparación falla no se aborta el cargue**: se registra como error/aviso, el resto continúa y el mensaje final lista los avisos de preparación.
 
 ### Formato H5P o HTML
 
@@ -370,7 +384,7 @@ Las actividades con recurso interactivo (OVA y OVI de tipo H5P o infografía) se
 
 ### Reporte
 
-Cada cargue genera un CSV con las columnas: `Fila Excel`, `Programa`, `Curso`, `Semana`, `Unidad`, `Actividad`, `Categoría`, `Tipo`, `Recurso`, `Resultado` y `Observación`. Se consulta en **Reportes** o **Historial**.
+Cada cargue genera un CSV con las columnas: `Fila Excel`, `Programa`, `Curso`, `Semana`, `Unidad`, `Actividad`, `Categoría`, `Tipo`, `Recurso`, `Resultado` y `Observación`. Las acciones de preparación previa aparecen como filas `Prep 1`, `Prep 2`, ... con `Categoría` = *Preparación* y `Resultado` OK/OMITIDO/ERROR. Se consulta en **Reportes** o **Historial**.
 
 ---
 
