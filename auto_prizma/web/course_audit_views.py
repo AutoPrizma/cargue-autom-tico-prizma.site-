@@ -1,9 +1,8 @@
 """Paginas de la auditoria profunda de curso: PRIZMA y Moodle.
 
-La auditoria no usa matriz, CSV ni syllabus: entra al curso publicado,
-recorre sus actividades y valida cada recurso por si mismo. Aqui solo se
-monta la cara de usuario (formulario, avance y reporte); los trabajos
-viven en services/.
+La auditoría PRIZMA entra al curso sin matriz; Moodle permite una matriz
+opcional y excluye el syllabus. Aquí solo se monta la cara de usuario
+(formulario, avance y reporte); los trabajos viven en services/.
 """
 
 import html
@@ -21,6 +20,7 @@ _ESTADOS_AUDITORIA = {
     "revisar": ("badge-ambar", "Revisar"),
     "falta": ("badge-rojo", "Sin recurso"),
     "no procesado": ("badge-gris", "No procesado"),
+    "omitido": ("badge-gris", "Omitido"),
 }
 
 _RENDER_LABELS = {
@@ -247,6 +247,7 @@ def render_moodle_audit_page(
         "logging_in": "Esperando inicio de sesión",
         "auditing": "Auditando el curso",
         "completed": "Completada",
+        "stopped": "Detenida: Moodle no respondió",
         "cancelled": "Cancelada",
         "error": "Con error",
     }
@@ -254,6 +255,7 @@ def render_moodle_audit_page(
         "logging_in": "badge-azul",
         "auditing": "badge-ambar",
         "completed": "badge-verde",
+        "stopped": "badge-ambar",
         "cancelled": "badge-gris",
         "error": "badge-rojo",
     }
@@ -370,9 +372,9 @@ _JS_AUDITORIA = r"""
   if(!root)return;
   var id=root.getAttribute('data-job-id');
   var base='/moodle-auditor-curso/'+encodeURIComponent(id);
-  var LABELS={logging_in:'Esperando inicio de sesión',auditing:'Auditando el curso',completed:'Completada',cancelled:'Cancelada',error:'Con error'};
-  var TONES={logging_in:'badge-azul',auditing:'badge-ambar',completed:'badge-verde',cancelled:'badge-gris',error:'badge-rojo'};
-  var ESTADOS={ok:['badge-verde','Completo'],revisar:['badge-ambar','Revisar'],falta:['badge-rojo','Sin recurso'],'no procesado':['badge-gris','No procesado']};
+  var LABELS={logging_in:'Esperando inicio de sesión',auditing:'Auditando el curso',completed:'Completada',stopped:'Detenida: Moodle no respondió',cancelled:'Cancelada',error:'Con error'};
+  var TONES={logging_in:'badge-azul',auditing:'badge-ambar',completed:'badge-verde',stopped:'badge-ambar',cancelled:'badge-gris',error:'badge-rojo'};
+   var ESTADOS={ok:['badge-verde','Completo'],revisar:['badge-ambar','Revisar'],falta:['badge-rojo','Sin recurso'],'no procesado':['badge-gris','No procesado'],omitido:['badge-gris','Omitido']};
   var RENDERS={si:'Sí',no:'No',no_comprobable:'No comprobable','':''};
   function el(tag,cls,text){var node=document.createElement(tag);if(cls)node.className=cls;if(text!=null)node.textContent=text;return node;}
   function render(job){

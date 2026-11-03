@@ -11,11 +11,18 @@ from auto_prizma.domain.moodle_audit import (
     RENDER_NO_COMPROBABLE,
     RENDER_SI,
     audit_row,
+    es_actividad_syllabus,
     interpret_activity_probe,
     parse_activity_cards,
     parse_week_links,
     summarize_audit_rows,
 )
+
+
+def test_syllabus_es_detectado_con_variantes_de_mayusculas_y_acentos():
+    assert es_actividad_syllabus("Syllabus - Introducción a la Etnoeducación.docx")
+    assert es_actividad_syllabus("Sílabos del curso")
+    assert not es_actividad_syllabus("Lectura sobre educación")
 
 
 def _curso_url(seccion):

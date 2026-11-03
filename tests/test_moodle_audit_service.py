@@ -28,6 +28,7 @@ class _ClienteFalso:
         self.sondas = sondas or {}
         self.pdf_descargable = pdf_descargable
         self.abiertas = []
+        self.auditadas = []
         self.cerrado = False
 
     def list_weeks(self):
@@ -40,6 +41,7 @@ class _ClienteFalso:
         return list(self.recursos.get(self.abiertas[-1] if self.abiertas else "", []))
 
     def audit_activity(self, url):
+        self.auditadas.append(url)
         return dict(self.sondas.get(url, {"error": "Sonda no preparada"}))
 
     def fetch_bytes(self, url, tope=None):
@@ -215,7 +217,31 @@ def test_matriz_marca_actividad_publicada_que_no_esta_en_plan(monkeypatch, tmp_p
     assert results[1]["matriz_estado"] == "no publicado"
 
 
-def test_auditoria_cancelada_marca_los_que_quedan(monkeypatch, tmp_path):
+def test_syllabus_se_marca_omitido_sin_abrirse_ni_descargarse(monkeypatch, tmp_path):
+    _aislar(monkeypatch, tmp_path)
+    syllabus_url = CURSO + "&id=syllabus"
+    lectura_url = CURSO + "&id=lectura"
+    cliente = _ClienteFalso(
+        recursos={"Semana 1": [
+            {"id": "s", "titulo": "Syllabus - Introducción a la Etnoeducación.docx", "url": syllabus_url, "tipo": "resource"},
+            {"id": "l", "titulo": "Lectura", "url": lectura_url, "tipo": "page"},
+        ]},
+        sondas={lectura_url: {
+            "encabezados": ["Lectura"], "texto_cuerpo": "Contenido de lectura",
+        }},
+    )
+    monkeypatch.setattr(cliente_moodle.MoodleClient, "launch", lambda *args, **kwargs: cliente)
+
+    job = moodle_audit.start_moodle_audit("ana", CURSO)
+
+    syllabus = next(row for row in job["results"] if row["estado"] == "omitido")
+    assert syllabus["actividad"].startswith("Syllabus")
+    assert "no lo abrió ni descargó" in syllabus["detalle"]
+    assert syllabus_url not in cliente.auditadas
+    assert cliente.auditadas == [lectura_url]
+
+
+def test_auditoria_cancelada_no_agrega_filas_de_recursos_pendientes(monkeypatch, tmp_path):
     _aislar(monkeypatch, tmp_path)
     cliente = _ClienteFalso(
         recursos={
@@ -234,6 +260,7 @@ def test_auditoria_cancelada_marca_los_que_quedan(monkeypatch, tmp_path):
 
     def audit_activity(url):
         # La cancelacion llega en mitad del primer recurso: el resto no se toca.
+        cliente.auditadas.append(url)
         enCurso = next(iter(moodle_audit.MOODLE_AUDIT_JOBS.values()))
         enCurso["cancel_requested"] = True
         return cliente.sondas.get(url, {"error": "Sonda no preparada"})
@@ -246,7 +273,30 @@ def test_auditoria_cancelada_marca_los_que_quedan(monkeypatch, tmp_path):
     assert trabajo["status"] == "cancelled"
     assert trabajo["finished"] is True
     estados = [fila["estado"] for fila in trabajo["results"]]
-    assert estados == ["ok", "no procesado"]
+    assert estados == ["ok"]
+    assert cliente.auditadas == [CURSO + "&a=1"]
+
+
+def test_tres_timeouts_consecutivos_detienen_el_recorrido(monkeypatch, tmp_path):
+    _aislar(monkeypatch, tmp_path)
+    recursos = [
+        {"id": str(i), "titulo": "Recurso " + str(i), "url": CURSO + "&a=" + str(i), "tipo": "page"}
+        for i in range(1, 5)
+    ]
+    urls = {item["url"] for item in recursos}
+    cliente = _ClienteFalso(
+        recursos={"Semana 1": recursos},
+        sondas={url: {"error": "Moodle no respondió", "timeout": True} for url in urls},
+    )
+    monkeypatch.setattr(cliente_moodle.MoodleClient, "launch", lambda *args, **kwargs: cliente)
+
+    job = moodle_audit.start_moodle_audit("ana", CURSO)
+
+    assert job["status"] == "stopped"
+    assert len(cliente.auditadas) == moodle_audit.MAX_TIMEOUTS_CONSECUTIVOS
+    assert len(job["results"]) == moodle_audit.MAX_TIMEOUTS_CONSECUTIVOS
+    assert "3 recursos consecutivos" in job["message"]
+    assert "3 recursos consecutivos" in job["report"]["stoppedReason"]
 
 
 def test_auditoria_sin_semanas_termina_con_error(monkeypatch, tmp_path):
