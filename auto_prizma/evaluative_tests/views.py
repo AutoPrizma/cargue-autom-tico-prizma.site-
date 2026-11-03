@@ -67,6 +67,7 @@ button.secundario,.boton.secundario{background:var(--panel);color:var(--acento-t
 .muted{color:var(--muted);font-size:12px}
 @media(max-width:1100px){.layout-tests{grid-template-columns:1fr}.panel-ayuda{order:2}}
 @media(max-width:900px){.grid2{grid-template-columns:1fr}}
+@media(max-width:600px){.panel{padding:18px}.layout-tests{gap:14px}.pair-row{grid-template-columns:minmax(0,1fr)}.option-row{grid-template-columns:30px minmax(0,1fr);gap:8px}.option-row>:last-child{grid-column:2}.dropzone{padding:24px 14px}.acciones{display:grid;grid-template-columns:minmax(0,1fr)}.acciones>*{width:100%}.test-card{padding:16px}.question{padding:12px}}
 
 /* ---- Estados dinamicos reutilizables (banners, kpis, badges, tarjeta en vivo) ---- */
 .status-banner{display:flex;gap:14px;align-items:flex-start;margin-bottom:20px;border-radius:14px;padding:20px;border:2px solid transparent;box-shadow:var(--sombra-sm)}

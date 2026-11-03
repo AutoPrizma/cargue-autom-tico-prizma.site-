@@ -31,7 +31,7 @@
   // Zonas de selección: anima el borde vacío y lo detiene con un archivo listo.
   function actualizarZonaArchivo(zona, archivoPresente) {
     if (!zona) return;
-    zona.classList.toggle("archivo-listo", Boolean(archivoPresente));
+    zona.classList.toggle("tiene-archivo", Boolean(archivoPresente));
     var input = zona.querySelector('input[type="file"]');
     zona.classList.toggle("archivo-inactivo", Boolean(input && input.disabled));
   }

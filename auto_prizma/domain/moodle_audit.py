@@ -1,6 +1,6 @@
 """Logica pura de la auditoria profunda de cursos de Moodle publicados.
 
-El recorrido abre el curso tal cual esta (semanas y recursos), sin matriz.
+El recorrido abre el curso tal cual está (semanas y recursos), con matriz opcional.
 Aqui se decide, a partir de lo que el navegador observo en cada actividad,
 si el recurso existe, renderiza de verdad (iframe H5P con contenido, visor
 PDF embebido o archivo descargable valido) y si el titulo que se ve al
@@ -24,6 +24,12 @@ def _seccion_de(url):
         return parse_qs(urlparse(str(url or "")).query).get("section", [""])[0]
     except ValueError:
         return ""
+
+
+def es_actividad_syllabus(titulo):
+    """Identifica títulos de syllabus/sílabo que la auditoría no debe abrir."""
+    palabras = set(clave(str(titulo or "")).split())
+    return bool(palabras & {"syllabus", "syllabi", "silabo", "silabos"})
 
 
 def parse_week_links(enlaces):

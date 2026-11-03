@@ -898,6 +898,18 @@ class MoodleClient:
             except Exception as exc:
                 return {"download": {"filename": nombre, "error": str(exc)[:160]}}
 
+        def esperar_descarga_si_inicio(exc):
+            if "download is starting" not in str(exc).lower():
+                return resultado_descarga()
+            if not descargas:
+                try:
+                    descarga = page.wait_for_event("download", timeout=3_000)
+                    if descarga not in descargas:
+                        descargas.append(descarga)
+                except Exception:
+                    pass
+            return resultado_descarga()
+
         try:
             if self._cancel_requested():
                 return {"cancelled": True}
@@ -905,8 +917,8 @@ class MoodleClient:
                 # `commit` no se queda esperando el DOM de una navegación que
                 # Moodle convirtió en descarga de archivo.
                 page.goto(url, wait_until="commit", timeout=15_000)
-            except Exception:
-                captura = resultado_descarga()
+            except Exception as exc:
+                captura = esperar_descarga_si_inicio(exc)
                 if captura:
                     return captura
                 raise
@@ -941,7 +953,7 @@ class MoodleClient:
             except Exception as exc:
                 return {"error": "No se pudo leer la página del recurso: " + str(exc)[:160]}
         except Exception as exc:
-            captura = resultado_descarga()
+            captura = esperar_descarga_si_inicio(exc)
             if captura:
                 return captura
             if isinstance(exc, PlaywrightTimeoutError):
