@@ -181,7 +181,6 @@ def motor_simulado(monkeypatch, tmp_path):
         return False
 
     monkeypatch.setattr(engine, "PRIZMA_VACIAR_HTML_CON_H5P", True)
-    monkeypatch.setattr(engine, "validar_carpeta_drive_para_actividad", lambda a: None)
     monkeypatch.setattr(
         engine,
         "resolver_recurso",

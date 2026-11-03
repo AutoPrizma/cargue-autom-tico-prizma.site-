@@ -17,6 +17,7 @@ from auto_prizma.services.auth import (
     _es_de,
     _usuario_actual,
 )
+from auto_prizma.services.course_state import _clave_actividad, _clave_curso
 from auto_prizma.services.history import (
     _historial_del_usuario,
     _leer_reporte_csv,
@@ -390,7 +391,7 @@ def _indice_columna(cabeceras, nombre):
     return None
 
 
-def _pagina_reporte_html(titulo, subtitulo, ruta_csv, url_descarga):
+def _pagina_reporte_html(titulo, subtitulo, ruta_csv, url_descarga, registro_id=""):
     """Muestra el reporte como tabla dentro de la app."""
     try:
         cabeceras, filas = _leer_reporte_csv(ruta_csv)
@@ -400,6 +401,9 @@ def _pagina_reporte_html(titulo, subtitulo, ruta_csv, url_descarga):
     indice_resultado = _indice_columna(cabeceras, "Resultado")
     indice_observacion = _indice_columna(cabeceras, "Observación")
     indice_fila = _indice_columna(cabeceras, "Fila Excel")
+    indice_hoja = _indice_columna(cabeceras, "Hoja")
+    indice_programa = _indice_columna(cabeceras, "Programa")
+    indice_curso = _indice_columna(cabeceras, "Curso")
 
     clases = [_clase_columna(nombre) for nombre in cabeceras]
     conteo = {"ok": 0, "error": 0, "omitido": 0, "cancelado": 0}
@@ -424,10 +428,32 @@ def _pagina_reporte_html(titulo, subtitulo, ruta_csv, url_descarga):
 
         if indice_observacion is not None:
             observacion = fila[indice_observacion] if indice_observacion < len(fila) else ""
+            reintento = ""
+            if (
+                indice_resultado is not None
+                and indice_fila is not None
+                and indice_hoja is not None
+                and indice_programa is not None
+                and indice_curso is not None
+                and _categoria_resultado(
+                    fila[indice_resultado] if indice_resultado < len(fila) else ""
+                ) == "error"
+            ):
+                valor = lambda indice: fila[indice] if indice < len(fila) else ""
+                id_curso = _clave_curso(valor(indice_curso), valor(indice_programa), _usuario_actual())
+                clave = _clave_actividad(valor(indice_hoja), valor(indice_fila))
+                indice_actividad = _indice_columna(cabeceras, "Actividad")
+                nombre_actividad = valor(indice_actividad) if indice_actividad is not None else ""
+                reintento = (
+                    '<button type="button" role="menuitem" data-reintentar-reporte '
+                    'data-curso="' + _e(id_curso) + '" data-clave="' + _e(clave)
+                    + '" data-nombre="' + _e(nombre_actividad)
+                    + '">' + icon("subir") + "Reintentar recurso</button>"
+                )
             celdas.append(
                 '<td class="celda-acciones">' + _menu_acciones(
                     "Más acciones para la fila",
-                    '<button type="button" role="menuitem" data-copiar="' + _e(observacion) + '" '
+                    reintento + '<button type="button" role="menuitem" data-copiar="' + _e(observacion) + '" '
                     'data-copiado="Observación copiada">' + icon("copiar") + "Copiar observación</button>",
                 ) + "</td>"
             )
@@ -487,8 +513,31 @@ def _pagina_reporte_html(titulo, subtitulo, ruta_csv, url_descarga):
         + "</tr></thead><tbody>" + cuerpo_tabla + "</tbody></table></div>"
         + _pie_tabla(len(filas), "registros")
         + "</section>"
+        + (
+            '<form id="form-reintento-reporte" class="panel form-reintento-reporte" '
+            'hidden method="post" action="/cursos/reintentar" enctype="multipart/form-data">'
+            '<h2>Reintentar: <span id="reintento-reporte-nombre"></span></h2>'
+            '<p>Sin archivo se vuelve a intentar con el ZIP original del cargue; también puedes adjuntar otro recurso.</p>'
+            '<input type="hidden" name="id_curso" id="reintento-reporte-curso">'
+            '<input type="hidden" name="clave" id="reintento-reporte-clave">'
+            '<input type="hidden" name="registro_id" value="' + _e(registro_id) + '">'
+            '<div class="form-reintento-campos"><label>Archivo opcional<input type="file" name="recurso"></label>'
+            '<label>Usuario PRIZMA<input type="text" name="usuario_prizma" autocomplete="username" required></label>'
+            '<label>Contraseña PRIZMA<input type="password" name="contrasena_prizma" autocomplete="current-password" required></label></div>'
+            '<button class="boton" type="submit">Reintentar actividad</button></form>'
+        )
     )
-    return render_page(titulo, contenido, active="reportes", page_css=_CSS_REGISTROS)
+    js_reintento = r'''document.querySelectorAll("[data-reintentar-reporte]").forEach(function(b){b.addEventListener("click",function(){
+      document.getElementById("reintento-reporte-curso").value=b.dataset.curso||"";
+      document.getElementById("reintento-reporte-clave").value=b.dataset.clave||"";
+      document.getElementById("reintento-reporte-nombre").textContent=b.dataset.nombre||"";
+      var f=document.getElementById("form-reintento-reporte");f.hidden=false;f.scrollIntoView({behavior:"smooth",block:"center"});
+    });});'''
+    return render_page(
+        titulo, contenido, active="reportes",
+        page_css=_CSS_REGISTROS + ".form-reintento-reporte{padding:20px;margin-top:16px}.form-reintento-reporte[hidden]{display:none}.form-reintento-campos{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px}.form-reintento-reporte label{display:grid;gap:6px}",
+        page_js=js_reintento,
+    )
 
 
 _CSS_REGISTROS = r"""
@@ -536,6 +585,7 @@ def descargar_reporte_guardado(registro_id: str, descargar: int = 0):
         subtitulo,
         ruta,
         "/reporte-guardado/" + registro_id + "?descargar=1",
+        registro_id=registro_id,
     ))
 
 
@@ -603,4 +653,5 @@ def descargar_reporte(
         subtitulo,
         ruta,
         "/reporte/" + trabajo_id + "?descargar=1",
+        registro_id=trabajo_id,
     ))

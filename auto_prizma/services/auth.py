@@ -26,8 +26,6 @@ from auto_prizma.core.config import (
     SESION_HORAS,
     USUARIOS_PATH,
     cookie_secure_forced,
-    google_redirect_uri,
-    local_login_user,
     session_secret_from_env,
 )
 
@@ -40,7 +38,6 @@ from auto_prizma.core.config import (
 # - La contrasena se guarda como PBKDF2-SHA256 con sal propia.
 # - La sesion viaja en una cookie firmada con HMAC; el servidor no
 #   guarda estado de sesion, asi que reiniciar uvicorn no desloguea.
-# - Cada usuario tiene SU PROPIO token de Google en data/tokens/.
 #
 
 # SESION_COOKIE, SESION_HORAS, PBKDF2_ITERACIONES, MAX_INTENTOS y
@@ -53,6 +50,7 @@ INTENTOS_FALLIDOS = {}
 # Se propaga a los endpoints sincronos (Starlette copia el contexto
 # al threadpool) y se fija a mano en el hilo de cargue.
 USUARIO_ACTUAL = contextvars.ContextVar("usuario_actual", default=None)
+ACCESO_LOCAL_DIRECTO = contextvars.ContextVar("acceso_local_directo", default=False)
 
 
 def _secreto_sesion():
@@ -90,31 +88,11 @@ def _cookie_segura():
     if cookie_secure_forced():
         return True
 
-    redirect_uri = google_redirect_uri().lower()
-
-    return redirect_uri.startswith("https://")
+    return False
 
 
 def _normalizar_usuario(usuario):
     return str(usuario or "").strip().lower()
-
-
-def _slug_usuario(usuario):
-    """Nombre de archivo seguro para el token de Google de ese usuario."""
-    base = re.sub(
-        r"[^a-z0-9._-]+",
-        "_",
-        _normalizar_usuario(usuario),
-    ).strip("._-")
-
-    if not base:
-        base = "usuario"
-
-    firma = hashlib.sha256(
-        _normalizar_usuario(usuario).encode("utf-8")
-    ).hexdigest()[:10]
-
-    return base[:40] + "-" + firma
 
 
 def _cargar_usuarios():
@@ -309,27 +287,34 @@ def is_loopback_request(request):
         return host.lower() == "localhost"
 
 
-def local_login_user_for(request):
-    """Usuario con el que se entra SIN login (AUTO_PRIZMA_SIN_LOGIN), o None.
+def local_identity_for(request):
+    """Identidad local sin credenciales; remoto = None.
 
-    Solo aplica a peticiones desde el mismo equipo y a un usuario existente y
-    activo: aunque la variable se defina en un servidor, desde fuera se sigue
-    pidiendo usuario y contraseña.
+    Si existe una sola cuenta activa de una instalación previa, la reutiliza
+    para mantener visible su historial.
     """
-    usuario = _normalizar_usuario(local_login_user())
-    if not usuario or not is_loopback_request(request):
+    if not is_loopback_request(request):
         return None
-    registro = _cargar_usuarios().get(usuario)
-    if not registro or not registro.get("activo", True):
-        return None
-    return usuario
+    usuarios = _cargar_usuarios()
+    activos = sorted(
+        usuario for usuario, datos in usuarios.items()
+        if isinstance(datos, dict) and datos.get("activo", True)
+    )
+    return activos[0] if len(activos) == 1 else "local"
 
 
 def _usuario_actual():
     return USUARIO_ACTUAL.get()
 
 
+def acceso_local_directo():
+    """Indica si la petición actual entró por loopback sin iniciar sesión."""
+    return ACCESO_LOCAL_DIRECTO.get()
+
+
 def _nombre_visible(usuario):
+    if _normalizar_usuario(usuario) == "local":
+        return "Equipo local"
     registro = _cargar_usuarios().get(_normalizar_usuario(usuario)) or {}
     return str(registro.get("nombre") or usuario or "")
 

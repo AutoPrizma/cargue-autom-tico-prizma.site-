@@ -117,6 +117,7 @@ def ejecutar_test_job(
             "esperando_asignatura": False,
             "opciones_asignatura": [],
             "asignatura_buscada": "",
+            "campo_seleccion": "Asignatura por pensum",
             "iniciado_en": datetime.now(timezone.utc).isoformat(),
             "finalizado_en": None,
             "asignatura": cascada.get("asignatura", ""),
@@ -125,7 +126,7 @@ def ejecutar_test_job(
         _AUTOMATION_JOBS[job_id] = auto_state
         sync_obj = {
             "event": threading.Event(),
-            "seleccion": {"asignatura": None},
+            "seleccion": {"asignatura": None, "campo": None},
         }
         _AUTOMATION_SYNC[job_id] = sync_obj
 
@@ -143,14 +144,15 @@ def ejecutar_test_job(
             except Exception:
                 pass
 
-    def pedir_seleccion_asignatura(opciones: list[str], buscada: str) -> str:
+    def pedir_seleccion_asignatura(opciones: list[str], buscada: str, campo: str = "Asignatura por pensum") -> str:
         with _AUTOMATION_LOCK:
             auto_state["esperando_asignatura"] = True
             auto_state["opciones_asignatura"] = opciones
             auto_state["asignatura_buscada"] = buscada
+            auto_state["campo_seleccion"] = campo
             msg_espera = (
-                f"La asignatura '{buscada}' no coincide exactamente en PRIZMA. "
-                f"Por favor selecciona una de las opciones en pantalla para continuar."
+                f"Hay varias opciones o no se encontró una coincidencia única para '{buscada}' en '{campo}'. "
+                "Selecciona la opción correcta para continuar."
             )
             auto_state["mensaje"] = msg_espera
             auto_state["logs"].append({
@@ -163,16 +165,25 @@ def ejecutar_test_job(
         with _AUTOMATION_LOCK:
             auto_state["esperando_asignatura"] = False
             auto_state["opciones_asignatura"] = []
-        if not notificado or not sync_obj["seleccion"].get("asignatura"):
-            raise ValueError("Tiempo de espera agotado (5 min) para seleccionar la asignatura en PRIZMA.")
+        seleccion = sync_obj["seleccion"].get("asignatura")
+        if not notificado or not seleccion:
+            raise ValueError(f"Tiempo de espera agotado (5 min) para seleccionar una opción de '{campo}' en PRIZMA.")
 
-        asignatura_confirmada = str(sync_obj["seleccion"]["asignatura"] or "").strip()
+        asignatura_confirmada = str(seleccion or "").strip()
+        selector_elegido = str(sync_obj["seleccion"].get("campo") or campo)
+        clave_cascada = {
+            "Facultad": "facultad", "Programa": "programa", "Pensum": "pensum",
+            "Nivel de pensum": "nivel", "Asignatura por pensum": "asignatura",
+            "Semana": "semana", "Corte": "corte",
+        }.get(selector_elegido, "asignatura")
         with _AUTOMATION_LOCK:
-            cascada["asignatura"] = asignatura_confirmada
-            auto_state["asignatura"] = asignatura_confirmada
+            cascada[clave_cascada] = asignatura_confirmada
+            if clave_cascada == "asignatura":
+                auto_state["asignatura"] = asignatura_confirmada
         with _JOBS_LOCK:
             job["cascada_datos"] = dict(cascada)
         sync_obj["seleccion"]["asignatura"] = None
+        sync_obj["seleccion"]["campo"] = None
         return asignatura_confirmada
 
     def _fila_test_reporte(indice, item, resultado, error_msg=""):

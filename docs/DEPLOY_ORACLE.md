@@ -57,7 +57,7 @@ Funciona igual que en Railway (mismo `Dockerfile`), pero en una máquina virtual
 
 ## Paso 4. Conseguir un dominio gratis (DuckDNS)
 
-HTTPS y Google OAuth necesitan un nombre de dominio, no una IP.
+HTTPS automático de Caddy requiere un nombre de dominio, no una IP.
 
 1. Entra a <https://www.duckdns.org> e inicia sesión (con Google o GitHub).
 2. Crea un subdominio, por ejemplo `cargue-prizma` → quedará `cargue-prizma.duckdns.org`.
@@ -107,23 +107,11 @@ Completa en `.env`:
 |---|---|
 | `APP_DOMAIN` | tu subdominio, p. ej. `cargue-prizma.duckdns.org` (sin `https://`) |
 | `AUTO_PRIZMA_SECRET` | el resultado de `openssl rand -hex 32` |
-| `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` | los de Google Cloud (pueden ser los mismos que usa Railway) |
-| `GOOGLE_REDIRECT_URI` | `https://<tu-subdominio>.duckdns.org/google/callback` |
 | `AUTO_PRIZMA_URL_PRIZMA` | vacío = PRIZMA de producción |
 
 Guardar en `nano`: `Ctrl+O`, `Enter`, `Ctrl+X`.
 
-## Paso 8. Registrar el dominio en Google Cloud
-
-En <https://console.cloud.google.com> → el proyecto de la app → **APIs y servicios** → **Credenciales** → el cliente OAuth → **URIs de redireccionamiento autorizados** → agrega:
-
-```
-https://<tu-subdominio>.duckdns.org/google/callback
-```
-
-Guarda. (Si Google pide el dominio en la *pantalla de consentimiento* → *Dominios autorizados*, agrega `<tu-subdominio>.duckdns.org`.)
-
-## Paso 9. Arrancar
+## Paso 8. Arrancar
 
 ```bash
 cd ~/auto-prizma/deploy/oracle
@@ -137,13 +125,13 @@ docker compose logs -f app      # la app (Ctrl+C para salir del log; la app sigu
 docker compose logs -f caddy    # el HTTPS: debe decir que obtuvo el certificado
 ```
 
-## Paso 10. Crear los usuarios de la app
+## Paso 9. Crear los usuarios de la app
 
 ```bash
 docker compose exec app python scripts/manage_users.py crear
 ```
 
-Abre `https://<tu-subdominio>.duckdns.org`, inicia sesión y conecta Google.
+Abre `https://<tu-subdominio>.duckdns.org` e inicia sesión. Las matrices XLSX/CSV, los ZIP de recursos y los DOCX se cargan como archivos locales; no hay conexión con cuentas externas.
 
 ---
 
@@ -173,6 +161,5 @@ Abre `https://<tu-subdominio>.duckdns.org`, inicia sesión y conecta Google.
 | La página no carga (timeout) | Faltan las reglas del paso 3 o no se ejecutó `setup-server.sh` |
 | Error de certificado / Caddy no obtiene HTTPS | DuckDNS no apunta a la IP del servidor, o los puertos 80/443 están cerrados |
 | `Falta APP_DOMAIN en .env` | No se creó `.env` o falta esa línea |
-| Google dice `redirect_uri_mismatch` | La URI del paso 8 no es idéntica a `GOOGLE_REDIRECT_URI` |
 | La app se reinicia sola durante un cargue | Poca memoria: sube la máquina a más GB o usa `AUTO_PRIZMA_MAX_SIMULTANEOS=1` |
 | El disco se llena con el tiempo | `uploads/` y `temp/` no se limpian solos; `docker compose up -d --build --force-recreate app` los vacía (están dentro del contenedor) |

@@ -158,7 +158,7 @@ def test_clicks_the_visible_upload_tab_and_waits_for_the_h5p_file_prompt():
 
 def test_launch_keeps_the_original_visible_moodle_browser_settings(tmp_path):
     page = Mock()
-    page.get_by_text.return_value.wait_for.return_value = None
+    page.evaluate.return_value = {"authenticated": True}
     context = Mock()
     context.pages = [page]
     playwright = Mock()
@@ -166,15 +166,19 @@ def test_launch_keeps_the_original_visible_moodle_browser_settings(tmp_path):
 
     with patch("auto_prizma.automation.moodle.client.sync_playwright") as start:
         start.return_value.start.return_value = playwright
-        client = MoodleClient.launch(
-            "https://prizma.americana.edu.co/course/view.php?id=42",
-            str(tmp_path / "profile"),
-        )
+        with patch.object(MoodleClient, "ensure_edit_mode") as ensure_edit:
+            client = MoodleClient.launch(
+                "https://prizma.americana.edu.co/course/view.php?id=42",
+                str(tmp_path / "profile"),
+                enable_edit_mode=False,
+            )
 
     kwargs = playwright.chromium.launch_persistent_context.call_args.kwargs
     assert kwargs["headless"] is False
     assert set(kwargs) == {"headless"}
     assert client.page is page
+    assert page.goto.call_count == 2
+    ensure_edit.assert_not_called()
 
 
 def test_h5p_upload_sets_the_file_input_then_uses_the_package_like_original():
@@ -300,6 +304,9 @@ def test_open_course_turns_on_edit_mode_before_working():
             state["checked"] = True
 
     class Page:
+        def evaluate(self, script):
+            return {"authenticated": True, "loginError": ""}
+
         def goto(self, url, **options):
             events.append("goto")
 
@@ -324,3 +331,70 @@ def test_open_course_turns_on_edit_mode_before_working():
     # Si ya está activo no se vuelve a pulsar (pulsarlo lo apagaría).
     client.open_course("https://prizma.americana.edu.co/course/view.php?id=1")
     assert events == ["goto", "click-edit-mode", "goto"]
+
+
+def test_login_wait_does_not_depend_on_spanish_course_label():
+    states = iter([
+        {"authenticated": False, "loginError": ""},
+        {"authenticated": True, "loginError": ""},
+    ])
+
+    class Page:
+        def evaluate(self, _script):
+            return next(states)
+
+        def wait_for_timeout(self, _milliseconds):
+            pass
+
+    client = MoodleClient.__new__(MoodleClient)
+    client.page = Page()
+    client._wait_for_manual_login()
+
+
+def test_auditoria_captura_descarga_directa_y_reutiliza_la_pestana(tmp_path):
+    pdf = tmp_path / "guia.pdf"
+    pdf.write_bytes(b"%PDF-1.4 test")
+
+    class Download:
+        suggested_filename = "guia.pdf"
+
+        def path(self):
+            return str(pdf)
+
+    class Page:
+        def __init__(self):
+            self.handlers = {}
+
+        def is_closed(self):
+            return False
+
+        def on(self, name, callback):
+            self.handlers[name] = callback
+
+        def remove_listener(self, name, callback):
+            if self.handlers.get(name) is callback:
+                self.handlers.pop(name)
+
+        def goto(self, *_args, **_kwargs):
+            self.handlers["download"](Download())
+            raise RuntimeError("Download is starting")
+
+    class Context:
+        def __init__(self):
+            self.page = Page()
+            self.created = 0
+
+        def new_page(self):
+            self.created += 1
+            return self.page
+
+    context = Context()
+    client = MoodleClient(context, object())
+
+    primero = client.audit_activity("https://moodle/recurso-1")
+    segundo = client.audit_activity("https://moodle/recurso-2")
+
+    assert primero["download"]["filename"] == "guia.pdf"
+    assert primero["download"]["bytes"] == b"%PDF-1.4 test"
+    assert segundo["download"]["bytes"] == b"%PDF-1.4 test"
+    assert context.created == 1

@@ -1,13 +1,13 @@
 """Iconos SVG de la interfaz.
 
 Trazos de 24x24 que toman el color del texto (currentColor); el tamano lo
-fija el CSS (.icono). El logo de Google es la unica excepcion: lleva sus
-colores propios.
+fija el CSS (.icono).
 """
 
 _TRAZOS = {
     # Menu lateral
     "inicio": '<path d="m3 10 9-7 9 7"/><path d="M5 9v12h14V9"/><path d="M10 21v-6h4v6"/>',
+    "torre": '<circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="2"/><path d="M12 3v4M21 12h-4M12 21v-4M3 12h4"/><path d="m16.2 7.8-2.8 2.8"/>',
     "test": '<rect x="8" y="2" width="8" height="4" rx="1"/><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/><path d="m9 14 2 2 4-4"/>',
     "moodle": '<path d="M3 19V9l4 4 5-6 5 6 4-4v10"/><path d="M3 19h18"/>',
     "subir": '<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="m17 8-5-5-5 5"/><path d="M12 3v12"/>',
@@ -63,22 +63,8 @@ _TRAZOS = {
     "codigo": '<path d="m8 8-4 4 4 4M16 8l4 4-4 4M14 4l-4 16"/>',
 }
 
-_GOOGLE = (
-    '<path fill="#4285F4" d="M23.5 12.3c0-.8-.1-1.6-.2-2.3H12v4.5h6.5a5.6 5.6 0 0 1-2.4 3.6v3h3.9c2.3-2.1 3.5-5.2 3.5-8.8z"/>'
-    '<path fill="#34A853" d="M12 24c3.2 0 6-1.1 8-2.9l-3.9-3c-1.1.7-2.5 1.2-4.1 1.2-3.1 0-5.8-2.1-6.7-5H1.3v3.1A12 12 0 0 0 12 24z"/>'
-    '<path fill="#FBBC05" d="M5.3 14.3a7.2 7.2 0 0 1 0-4.6V6.6H1.3a12 12 0 0 0 0 10.8z"/>'
-    '<path fill="#EA4335" d="M12 4.8c1.8 0 3.3.6 4.6 1.8l3.4-3.4A12 12 0 0 0 1.3 6.6l4 3.1c.9-2.9 3.6-4.9 6.7-4.9z"/>'
-)
-
-
 def icon(name, css_class="icono"):
     """SVG en linea del icono pedido (KeyError si no existe: es un error de programacion)."""
-    if name == "google":
-        return (
-            '<svg class="' + css_class + ' icono-google" viewBox="0 0 24 24" '
-            'aria-hidden="true" focusable="false">' + _GOOGLE + "</svg>"
-        )
-
     return (
         '<svg class="' + css_class + '" viewBox="0 0 24 24" aria-hidden="true" '
         'focusable="false">' + _TRAZOS[name] + "</svg>"

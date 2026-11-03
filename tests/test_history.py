@@ -2,6 +2,7 @@
 
 import json
 import re
+from datetime import datetime, timedelta
 
 import pytest
 
@@ -95,3 +96,33 @@ def test_nombre_reporte_format_and_sanitization():
         r"\d{4}-\d{2}-\d{2}_\d{2}-\d{2}-\d{2} - Gestión- -Finanzas-I - Contaduría_y_1_curso_mas - abcdef\.csv",
         nombre,
     ), nombre
+
+
+def test_limpiar_historial_viejo_elimina_registro_y_csv_y_conserva_reciente(
+    historial_temporal, tmp_path, monkeypatch
+):
+    reportes = tmp_path / "reportes"
+    reportes.mkdir()
+    monkeypatch.setattr(history, "RESULTADOS_DIR", str(reportes))
+    ahora = datetime.fromisoformat("2026-10-27T12:00:00-05:00")
+    monkeypatch.setattr(history, "_ahora_colombia", lambda: ahora)
+    viejo_csv = reportes / "viejo.csv"
+    nuevo_csv = reportes / "nuevo.csv"
+    viejo_csv.write_text("viejo", encoding="utf-8")
+    nuevo_csv.write_text("nuevo", encoding="utf-8")
+    historial_temporal.write_text(json.dumps([
+        {
+            "id": "viejo", "fecha_iso": (ahora - timedelta(days=16)).isoformat(),
+            "archivo_reporte": viejo_csv.name, "usuario_app": "ana",
+        },
+        {
+            "id": "nuevo", "fecha_iso": (ahora - timedelta(days=14)).isoformat(),
+            "archivo_reporte": nuevo_csv.name, "usuario_app": "ana",
+        },
+    ]), encoding="utf-8")
+
+    history.limpiar_historial_viejo()
+
+    assert [r["id"] for r in json.loads(historial_temporal.read_text(encoding="utf-8"))] == ["nuevo"]
+    assert not viejo_csv.exists()
+    assert nuevo_csv.exists()

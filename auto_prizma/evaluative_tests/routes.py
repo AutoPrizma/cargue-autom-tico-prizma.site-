@@ -14,6 +14,7 @@ from fastapi import APIRouter, File, Form, Request, UploadFile
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse, Response
 
 from auto_prizma.core.config import PRIZMA_HOST
+from auto_prizma.web.icons import icon
 
 from .models import Severity, document_from_dict
 from .parser import parse_docx_bytes
@@ -23,7 +24,6 @@ from .state import (
     _AUTOMATION_JOBS,
     _AUTOMATION_LOCK,
     _AUTOMATION_SYNC,
-    _es_google_conectado,
     _guardar_credenciales_prizma,
     _job_for,
     _user,
@@ -43,26 +43,14 @@ router = APIRouter()
 @router.get("/tests", response_class=HTMLResponse)
 def tests_home(request: Request):
     user = _user(request)
-    google_conectado = _es_google_conectado(user)
     info_activo = _obtener_estado_test_activo(user)
     tarjeta_activo = _render_tarjeta_estado_test(info_activo)
 
-    if google_conectado:
-        alerta_google = '''<div class="alert-soft alert-soft--ok">
-            <span style="font-size:20px;">✓</span>
-            <span style="font-size:13px;">Tu cuenta de Google está vinculada en esta sesión. Puedes ingresar enlaces privados o compartidos.</span>
-        </div>'''
-    else:
-        alerta_google = '''<div class="alert-soft alert-soft--warn">
-            <span style="font-size:20px;">⚠️</span>
-            <div style="font-size:13px;line-height:1.5;">
-                <strong>¿Tu documento de Google Docs es privado?</strong><br>
-                <a href="/" style="font-weight:700;text-decoration:underline;">Ve al inicio e inicia sesión con tu cuenta de Google</a> para autorizar la sincronización privada. Si el documento ya tiene acceso público con el enlace, puedes continuar directamente.
-            </div>
-        </div>'''
-
-    body = f'''<h1>Nuevo Test</h1>
-    <p>Asistente para convertir evaluaciones académicas en tests auditados y JSON compatibles para PRIZMA de manera 100% automatizada.</p>
+    body = f'''<header class="encabezado workspace-page-heading"><div class="encabezado-titulo">
+        <span class="icono-tile grande">{icon("test")}</span>
+        <div><h1>Nuevo Test</h1>
+        <p>Asistente para convertir evaluaciones académicas en tests auditados y JSON compatibles para PRIZMA de manera 100% automatizada.</p></div>
+    </div></header>
     <div class="pasos">
         <span class="paso">1 Entrada</span>
         <span class="paso">2 Revisión</span>
@@ -75,22 +63,9 @@ def tests_home(request: Request):
     <div class="layout-tests">
         <section class="panel">
             <h2>Suministrar evaluación</h2>
-            <p>Elige el origen del documento con las preguntas del test:</p>
+            <p>Selecciona el documento Word (.docx) con las preguntas del test:</p>
 
             <form id="form-analizar" action="/tests/analizar" method="post" enctype="multipart/form-data">
-                <div style="display:flex;gap:12px;margin-bottom:22px;flex-wrap:wrap;">
-                    <label id="lbl-modo-archivo" class="mode-option mode-option--activo">
-                        <input type="radio" name="modo_entrada" value="archivo" checked style="accent-color:#5548e8;">
-                        <strong>📄 Por archivo</strong>
-                        <span>Sube un documento Word (.docx)</span>
-                    </label>
-                    <label id="lbl-modo-link" class="mode-option">
-                        <input type="radio" name="modo_entrada" value="link" style="accent-color:#5548e8;">
-                        <strong>🔗 Por link</strong>
-                        <span>Google Docs (público o privado)</span>
-                    </label>
-                </div>
-
                 <div id="bloque-archivo">
                     <label class="dropzone" id="dropzone-box" for="archivo_docx">
                         <div id="dropzone-vacio">
@@ -110,12 +85,6 @@ def tests_home(request: Request):
                     </label>
                 </div>
 
-                <div id="bloque-link" style="display:none;">
-                    <label for="google_doc_url">Enlace del Google Doc</label>
-                    <input id="google_doc_url" name="google_doc_url" type="url" placeholder="https://docs.google.com/document/d/.../edit">
-                    {alerta_google}
-                </div>
-
                 <div class="acciones">
                     <button type="submit" id="btn-analizar">🚀 Analizar documento</button>
                 </div>
@@ -124,7 +93,7 @@ def tests_home(request: Request):
 
         <aside class="panel-ayuda">
             <h3>¿Cómo funciona?</h3>
-            <div class="paso-ayuda"><b>1</b><span>Elige <strong>Por archivo</strong> (.docx) o <strong>Por link</strong> (Google Docs).</span></div>
+            <div class="paso-ayuda"><b>1</b><span>Selecciona un documento Word (.docx).</span></div>
             <div class="paso-ayuda"><b>2</b><span>El sistema extraerá automáticamente el <strong>Título</strong>, <strong>Semana</strong>, <strong>Corte</strong> y preguntas.</span></div>
             <div class="paso-ayuda"><b>3</b><span>Audita y ajusta las preguntas en la pantalla de revisión con semáforo pedagógico.</span></div>
             <div class="paso-ayuda"><b>4</b><span>Descarga el respaldo en JSON o déjalos preparados para la inyección desatendida en PRIZMA.</span></div>
@@ -139,12 +108,6 @@ def tests_home(request: Request):
     </div>
 
     <script>
-    const radioArchivo = document.querySelector('input[name="modo_entrada"][value="archivo"]');
-    const radioLink = document.querySelector('input[name="modo_entrada"][value="link"]');
-    const lblArchivo = document.getElementById('lbl-modo-archivo');
-    const lblLink = document.getElementById('lbl-modo-link');
-    const bloqueArchivo = document.getElementById('bloque-archivo');
-    const bloqueLink = document.getElementById('bloque-link');
     const inputFile = document.getElementById('archivo_docx');
     const dropzoneBox = document.getElementById('dropzone-box');
     const dropVacio = document.getElementById('dropzone-vacio');
@@ -152,17 +115,6 @@ def tests_home(request: Request):
     const nombreArchivo = document.getElementById('nombre-archivo-seleccionado');
     const pesoArchivo = document.getElementById('peso-archivo-seleccionado');
     const btnAnalizar = document.getElementById('btn-analizar');
-
-    function actualizarModo() {{
-        const esArchivo = radioArchivo.checked;
-        bloqueArchivo.style.display = esArchivo ? '' : 'none';
-        bloqueLink.style.display = esArchivo ? 'none' : '';
-        lblArchivo.classList.toggle('mode-option--activo', esArchivo);
-        lblLink.classList.toggle('mode-option--activo', !esArchivo);
-    }}
-
-    radioArchivo.addEventListener('change', actualizarModo);
-    radioLink.addEventListener('change', actualizarModo);
 
     function mostrarArchivo(file) {{
         if (!file) return;
@@ -251,54 +203,19 @@ def tests_home(request: Request):
 async def analyze_tests(
     request: Request,
     archivo_docx: UploadFile | None = File(default=None),
-    google_doc_url: str | None = Form(default=None),
-    modo_entrada: str = Form(default="archivo"),
 ):
-    content = b""
-    source_name = ""
-    modo_entrada = (modo_entrada or "archivo").strip().lower()
-
-    if modo_entrada == "archivo" and archivo_docx and archivo_docx.filename:
-        if not archivo_docx.filename.lower().endswith(".docx"):
-            return HTMLResponse(
-                _layout("Test", '<section class="panel"><div class="issue error">El archivo debe tener formato Microsoft Word (.docx).</div><div class="acciones"><a class="boton" href="/tests">Volver</a></div></section>'),
-                status_code=400,
-            )
-        content = await archivo_docx.read()
-        source_name = archivo_docx.filename
-    elif modo_entrada == "link" or (google_doc_url and google_doc_url.strip()):
-        url_doc = str(google_doc_url or "").strip()
-        if not url_doc:
-            return HTMLResponse(
-                _layout("Test", '<section class="panel"><div class="issue error">Ingresa el enlace del Google Doc.</div><div class="acciones"><a class="boton" href="/tests">Volver</a></div></section>'),
-                status_code=400,
-            )
-        loader = getattr(request.app.state, "test_google_loader", None)
-        if not loader:
-            return HTMLResponse(
-                _layout("Test", '<section class="panel"><div class="issue error">La conexión con Google Drive no está inicializada en el servidor.</div><div class="acciones"><a class="boton" href="/tests">Volver</a></div></section>'),
-                status_code=400,
-            )
-        try:
-            content, source_name = loader(url_doc, _user(request))
-        except Exception as exc:
-            return HTMLResponse(
-                _layout("Test", f'<section class="panel"><div class="issue error">No se pudo descargar el Google Doc: {html.escape(str(exc))}</div><div class="acciones"><a class="boton" href="/tests">Volver a intentar</a></div></section>'),
-                status_code=400,
-            )
-    elif archivo_docx and archivo_docx.filename:
-        if not archivo_docx.filename.lower().endswith(".docx"):
-            return HTMLResponse(
-                _layout("Test", '<section class="panel"><div class="issue error">El archivo debe tener formato Microsoft Word (.docx).</div><div class="acciones"><a class="boton" href="/tests">Volver</a></div></section>'),
-                status_code=400,
-            )
-        content = await archivo_docx.read()
-        source_name = archivo_docx.filename
-    else:
+    if not archivo_docx or not archivo_docx.filename:
         return HTMLResponse(
-            _layout("Test", '<section class="panel"><div class="issue error">Selecciona un archivo Word (.docx) o introduce un enlace de Google Docs.</div><div class="acciones"><a class="boton" href="/tests">Volver</a></div></section>'),
+            _layout("Test", '<section class="panel"><div class="issue error">Selecciona un archivo Word (.docx).</div><div class="acciones"><a class="boton" href="/tests">Volver</a></div></section>'),
             status_code=400,
         )
+    if not archivo_docx.filename.lower().endswith(".docx"):
+            return HTMLResponse(
+                _layout("Test", '<section class="panel"><div class="issue error">El archivo debe tener formato Microsoft Word (.docx).</div><div class="acciones"><a class="boton" href="/tests">Volver</a></div></section>'),
+                status_code=400,
+            )
+    content = await archivo_docx.read()
+    source_name = archivo_docx.filename
 
     if not content:
         return HTMLResponse(
@@ -375,12 +292,8 @@ async def ejecutar_prizma(
     ver_navegador: str | None = Form(default=None),
     solo_simulacion: str | None = Form(default=None),
     cascada_facultad: str = Form(default=""),
-    cascada_programa: str = Form(default=""),
-    cascada_pensum: str = Form(default=""),
+    linea_academica: str = Form(default=""),
     cascada_nivel: str = Form(default=""),
-    cascada_asignatura: str = Form(default=""),
-    cascada_semana: str = Form(default=""),
-    cascada_corte: str = Form(default=""),
 ):
     job = _job_for(request, job_id)
     if not job:
@@ -396,16 +309,28 @@ async def ejecutar_prizma(
     errores = [i for i in issues if i.severity == Severity.ERROR]
     if errores:
         return HTMLResponse(_render_review(job_id, job, "Corrige los errores pendientes antes de cargar el test a PRIZMA."), status_code=400)
+    datos_academicos = job.get("cascada_datos") or {}
+    linea = linea_academica.strip() or str(datos_academicos.get("linea_academica", "")).strip()
+    if not linea and datos_academicos.get("programa") and datos_academicos.get("pensum"):
+        linea = " ".join(str(datos_academicos.get(k, "")).strip() for k in ("programa", "pensum", "codigo_asignatura", "asignatura") if datos_academicos.get(k))
+    from auto_prizma.services.matrix_analysis import _parsear_datos_academicos
+    datos_parseados = _parsear_datos_academicos(linea)
+    if not datos_parseados:
+        return HTMLResponse(_render_review(job_id, job, "Pega la línea académica con código de programa, código de pensum, código de asignatura y nombre de asignatura."), status_code=400)
+    if not cascada_nivel.strip():
+        return HTMLResponse(_render_review(job_id, job, "Selecciona el nivel de pensum para continuar."), status_code=400)
 
     headless = not bool(ver_navegador)
     cascada = {
         "facultad": cascada_facultad.strip(),
-        "programa": cascada_programa.strip(),
-        "pensum": cascada_pensum.strip(),
+        "programa": datos_parseados["programa"],
+        "pensum": datos_parseados["pensum"],
         "nivel": cascada_nivel.strip(),
-        "asignatura": cascada_asignatura.strip(),
-        "semana": cascada_semana.strip(),
-        "corte": cascada_corte.strip(),
+        "asignatura": f'{datos_parseados["codigo_asignatura"]} {datos_parseados["asignatura"]}'.strip(),
+        "semana": "",
+        "corte": "",
+        "codigo_asignatura": datos_parseados["codigo_asignatura"],
+        "linea_academica": linea,
     }
 
     ruta_reporte_test = None
@@ -522,15 +447,16 @@ def status_prizma(request: Request, job_id: str):
         <div style="display:flex;gap:14px;align-items:flex-start;width:100%;">
             <div class="status-icon">⚠️</div>
             <div style="flex:1;">
-                <h3>Selección de Asignatura Requerida</h3>
+            <h3 id="titulo-seleccion-campo">Confirma una opción de PRIZMA</h3>
                 <p id="txt-asignatura-buscada" style="margin:0;">La asignatura ingresada no coincide exactamente con las opciones registradas en PRIZMA. Selecciona la opción correcta para que el robot continúe:</p>
             </div>
         </div>
         <div style="display:flex;gap:12px;flex-wrap:wrap;align-items:center;margin-top:14px;width:100%;">
+            <input type="hidden" id="campo-seleccion-pendiente" value="Asignatura por pensum">
             <select id="sel-asignatura-opciones" style="flex:1;min-width:280px;">
-                <option value="">-- Seleccionar asignatura de PRIZMA --</option>
+                <option value="">-- Seleccionar opción de PRIZMA --</option>
             </select>
-            <button id="btn-confirmar-asignatura" type="button" style="background:#d97706;">
+            <button id="btn-confirmar-asignatura" type="button" class="boton">
                 Confirmar Asignatura y Continuar ➔
             </button>
         </div>
@@ -702,12 +628,17 @@ def status_prizma(request: Request, job_id: str):
                     if (data.esperando_asignatura && data.opciones_asignatura && data.opciones_asignatura.length > 0) {{
                         pnlAsig.style.display = "flex";
                         const txtBusq = document.getElementById("txt-asignatura-buscada");
+                        const tituloCampo = document.getElementById("titulo-seleccion-campo");
+                        const selectorCampo = data.campo_seleccion || "Asignatura por pensum";
+                        const campoPendiente = document.getElementById("campo-seleccion-pendiente");
+                        if (campoPendiente) campoPendiente.value = selectorCampo;
+                            if (tituloCampo) tituloCampo.textContent = `Confirma ${{selectorCampo}}`;
                         if (txtBusq && data.asignatura_buscada) {{
-                            txtBusq.textContent = `La asignatura "${{data.asignatura_buscada}}" no coincide exactamente en PRIZMA. Selecciona la opción correcta entre las ${{data.opciones_asignatura.length}} disponibles para continuar:`;
+                            txtBusq.textContent = `PRIZMA mostró ${{data.opciones_asignatura.length}} opciones para "${{data.asignatura_buscada}}". Elige la correcta para continuar:`;
                         }}
                         const selAsig = document.getElementById("sel-asignatura-opciones");
                         if (selAsig && selAsig.options.length <= 1) {{
-                            selAsig.innerHTML = `<option value="">-- Seleccionar asignatura de PRIZMA (${{data.opciones_asignatura.length}} opciones) --</option>` +
+                                selAsig.innerHTML = `<option value="">-- Seleccionar opción de PRIZMA (${{data.opciones_asignatura.length}} opciones) --</option>` +
                                 data.opciones_asignatura.map(op => `<option value="${{op.replace(/"/g, '&quot;')}}">${{op}}</option>`).join("");
                         }}
                     }} else {{
@@ -755,11 +686,13 @@ def status_prizma(request: Request, job_id: str):
             const selAsig = document.getElementById("sel-asignatura-opciones");
             const msgConf = document.getElementById("msg-confirmacion-asignatura");
             if (!selAsig || !selAsig.value) {{
-                alert("Por favor selecciona una asignatura de la lista antes de continuar.");
+                    alert("Selecciona una opción de la lista antes de continuar.");
                 return;
             }}
             const formData = new FormData();
             formData.append("asignatura", selAsig.value);
+            const campoPendiente = document.getElementById("campo-seleccion-pendiente");
+            formData.append("selector", campoPendiente ? campoPendiente.value : "Asignatura por pensum");
             btnConfAsig.disabled = true;
             btnConfAsig.textContent = "⏳ Enviando selección...";
             fetch(`/tests/${{jobId}}/seleccionar-asignatura`, {{
@@ -772,7 +705,7 @@ def status_prizma(request: Request, job_id: str):
                     if (msgConf) {{
                         msgConf.style.display = "block";
                         msgConf.style.color = "var(--verde)";
-                        msgConf.textContent = `✓ Selección enviada: "${{res.asignatura}}". El robot continuará procesando el test...`;
+                        msgConf.textContent = `✓ Selección enviada: "${{res.opcion || res.asignatura}}". El robot continuará procesando el test...`;
                     }}
                     btnConfAsig.textContent = "✓ Confirmado";
                     setTimeout(() => {{
@@ -829,7 +762,12 @@ def cancelar_prizma(request: Request, job_id: str):
 
 
 @router.post("/tests/{job_id}/seleccionar-asignatura")
-def seleccionar_asignatura(request: Request, job_id: str, asignatura: str = Form(...)):
+def seleccionar_asignatura(
+    request: Request,
+    job_id: str,
+    asignatura: str = Form(...),
+    selector: str = Form(default="Asignatura por pensum"),
+):
     job = _job_for(request, job_id)
     if not job:
         return JSONResponse({"error": "Este análisis ya no existe en el servidor. Normalmente pasa si el servidor se reinició con la página abierta (los análisis se guardan solo en memoria, no en disco). Sube el documento de nuevo para generar un análisis nuevo."}, status_code=404)
@@ -844,47 +782,21 @@ def seleccionar_asignatura(request: Request, job_id: str, asignatura: str = Form
         return JSONResponse({"error": "Debes seleccionar una asignatura"}, status_code=400)
 
     sync_obj["seleccion"]["asignatura"] = asignatura_limpia
+    sync_obj["seleccion"]["campo"] = selector.strip()
     sync_obj["event"].set()
-    return JSONResponse({"ok": True, "asignatura": asignatura_limpia})
+    return JSONResponse({"ok": True, "asignatura": asignatura_limpia, "opcion": asignatura_limpia})
 
 
-async def _extraer_bytes_docx_request(
-    request: Request,
-    archivo_docx: UploadFile | None,
-    google_doc_url: str | None,
-    modo_entrada: str,
-) -> tuple[bytes, str, str | None]:
+async def _extraer_bytes_docx_request(archivo_docx: UploadFile | None) -> tuple[bytes, str, str | None]:
     """Retorna (contenido_bytes, nombre_fuente, error_str)."""
-    modo_entrada = (modo_entrada or "archivo").strip().lower()
-    if modo_entrada == "archivo" and archivo_docx and archivo_docx.filename:
-        if not archivo_docx.filename.lower().endswith(".docx"):
-            return b"", "", "El archivo debe tener formato Microsoft Word (.docx)."
-        c = await archivo_docx.read()
-        if not c:
-            return b"", "", "El documento seleccionado está vacío o dañado."
-        return c, archivo_docx.filename, None
-    elif modo_entrada == "link" or (google_doc_url and google_doc_url.strip()):
-        url_doc = str(google_doc_url or "").strip()
-        if not url_doc:
-            return b"", "", "Ingresa el enlace del Google Doc."
-        loader = getattr(request.app.state, "test_google_loader", None)
-        if not loader:
-            return b"", "", "La conexión con Google Drive no está inicializada en el servidor."
-        try:
-            c, name = loader(url_doc, _user(request))
-            if not c:
-                return b"", "", "El documento de Google Docs está vacío."
-            return c, name, None
-        except Exception as exc:
-            return b"", "", f"No se pudo descargar el Google Doc: {exc}"
-    elif archivo_docx and archivo_docx.filename:
-        if not archivo_docx.filename.lower().endswith(".docx"):
-            return b"", "", "El archivo debe tener formato Microsoft Word (.docx)."
-        c = await archivo_docx.read()
-        if not c:
-            return b"", "", "El documento seleccionado está vacío o dañado."
-        return c, archivo_docx.filename, None
-    return b"", "", "Selecciona un archivo Word (.docx) o introduce un enlace de Google Docs."
+    if not archivo_docx or not archivo_docx.filename:
+        return b"", "", "Selecciona un archivo Word (.docx)."
+    if not archivo_docx.filename.lower().endswith(".docx"):
+        return b"", "", "El archivo debe tener formato Microsoft Word (.docx)."
+    content = await archivo_docx.read()
+    if not content:
+        return b"", "", "El documento seleccionado está vacío o dañado."
+    return content, archivo_docx.filename, None
 
 
 def _obtener_estado_test_activo(user: str = "") -> dict | None:

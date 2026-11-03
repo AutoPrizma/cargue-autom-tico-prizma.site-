@@ -16,7 +16,7 @@ services:
     restart: unless-stopped
     env_file: .env
     environment:
-      # Usuarios, historial, reportes y tokens de Google van al volumen.
+      # Usuarios, historial y reportes van al volumen.
       AUTO_PRIZMA_DATA_DIR: /app/data
     # Igual que el CMD del Dockerfile, pero aceptando las cabeceras del proxy
     # (Caddy) para que el bloqueo por intentos de login vea la IP real del usuario.

@@ -115,7 +115,7 @@ class _PlaywrightFalso:
 def _preparar_motor(monkeypatch, errores_login):
     llamadas_login = []
 
-    def iniciar_sesion_falsa(pagina, usuario, contrasena):
+    def iniciar_sesion_falsa(pagina, usuario, contrasena, abrir_actividades=True):
         llamadas_login.append(usuario)
         if errores_login:
             raise RuntimeError(errores_login.pop(0))

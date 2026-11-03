@@ -2,12 +2,17 @@
 
 import os
 import re
+import time
 from urllib.parse import urlparse, parse_qs
 
 from playwright.sync_api import TimeoutError as PlaywrightTimeoutError
 from playwright.sync_api import sync_playwright
 
 from auto_prizma.domain.moodle_resources import BLOCK_LABELS, normalize_key
+from auto_prizma.domain.moodle_audit import (
+    parse_activity_cards,
+    parse_week_links,
+)
 
 
 DESTINATION_NAMES = BLOCK_LABELS
@@ -17,17 +22,72 @@ INSERTION_BOUNDARY = {
     "audiovisual": "button[data-action=\"open-chooser\"][aria-label*=\"{label}\"]",
 }
 
+# Sonda de la pagina de una actividad: encabezados, cuerpo y si el H5P/PDF
+# se montaron de verdad (la auditoria de curso la corre en una pestana
+# aparte; el interior del iframe H5P se lee solo si es mismo origen).
+_SONDA_ACTIVIDAD_JS = """
+() => {
+  const norm = value => String(value || '').replace(/\\s+/g, ' ').trim();
+  const encabezados = Array.from(document.querySelectorAll('h1'))
+    .map(node => norm(node.innerText || node.textContent))
+    .filter(text => text && !/moodle|prizma/i.test(text)).slice(0, 3);
+  const body = document.body || null;
+  const cuerpo = norm(body ? body.innerText : '').slice(0, 20000);
+
+  const iframe = document.querySelector('.h5p-iframe, iframe.h5p-iframe, iframe[src*="h5p"]');
+  let h5p = { presente: false, alto: 0, texto: '', titulo: '' };
+  if (iframe) {
+    h5p.presente = true;
+    h5p.alto = iframe.offsetHeight || 0;
+    try {
+      const doc = iframe.contentDocument;
+      if (doc && doc.body) {
+        h5p.texto = norm(doc.body.innerText || '').slice(0, 4000);
+        const titulos = Array.from(doc.querySelectorAll('h1, .h5p-title, .h5p-content-title'))
+          .map(titulo => norm(titulo.innerText || titulo.textContent))
+          .filter(Boolean);
+        h5p.titulos = Array.from(new Set(titulos)).slice(0, 12);
+        h5p.titulo = h5p.titulos[0] || '';
+      }
+    } catch (error) {
+      // Interior no accesible: se valida con lo que se ve por fuera.
+    }
+  }
+
+  const embebido = document.querySelector(
+    'embed[type="application/pdf"], object[type="application/pdf"], iframe[src*=".pdf"]'
+  );
+  const enlacePdf = document.querySelector('a[href*=".pdf"]');
+  let pdf = { presente: false, embebido: false, origen: '' };
+  if (embebido) {
+    pdf = { presente: true, embebido: true, origen: embebido.getAttribute('src') || '' };
+  } else if (enlacePdf) {
+    pdf = { presente: true, embebido: false, origen: enlacePdf.href || '' };
+  }
+
+  return { encabezados, texto_cuerpo: cuerpo, h5p, pdf, url: String(location.href) };
+}
+"""
+
 
 class MoodleClient:
-    def __init__(self, context, page):
+    def __init__(self, context, page, cancel_check=None):
         self.context = context
         self.page = page
+        self.cancel_check = cancel_check or (lambda: False)
         self.current_week = ""
         self.current_section_id = ""
         self.unavailable_destination_blocks = {}
+        self.audit_page = None
+
+    def _cancel_requested(self):
+        return bool(getattr(self, "cancel_check", lambda: False)())
 
     @classmethod
-    def launch(cls, course_url, profile_path):
+    def launch(
+        cls, course_url, profile_path, username="", password="",
+        cancel_check=None, enable_edit_mode=True,
+    ):
         os.makedirs(profile_path, exist_ok=True)
         playwright = sync_playwright().start()
         context = None
@@ -37,11 +97,21 @@ class MoodleClient:
                 headless=False,
             )
             page = context.pages[0] if context.pages else context.new_page()
-            page.goto(course_url, wait_until="domcontentloaded")
-            client = cls(context, page)
+            page.goto(course_url, wait_until="domcontentloaded", timeout=20_000)
+            client = cls(context, page, cancel_check=cancel_check)
             client._playwright = playwright
+            if username and password and client._login_with_credentials(username, password):
+                client._wait_for_manual_login()
+            else:
+                # En Moodle con SSO/2FA o una sesión ya iniciada no siempre hay
+                # un formulario estándar; conserva la opción de completar ese paso.
+                client._wait_for_manual_login()
+            # Tras autenticarse Moodle puede dejar al usuario en el inicio.
+            # Vuelve a abrir el enlace solicitado para llegar al curso exacto.
+            page.goto(course_url, wait_until="domcontentloaded", timeout=20_000)
             client._wait_for_manual_login()
-            client.ensure_edit_mode()
+            if enable_edit_mode:
+                client.ensure_edit_mode()
             return client
         except Exception:
             if context:
@@ -53,7 +123,67 @@ class MoodleClient:
             raise
 
     def _wait_for_manual_login(self):
-        self.page.get_by_text("Curso", exact=True).wait_for(timeout=120_000)
+        deadline = time.monotonic() + 120
+        while time.monotonic() < deadline:
+            if self._cancel_requested():
+                raise RuntimeError("La auditoría fue cancelada.")
+            try:
+                state = self.page.evaluate(
+                    """() => {
+                      const body = document.body;
+                      const error = document.querySelector('#loginerrormessage, [data-region="loginerrors"], .loginerrors');
+                      return {
+                        authenticated: !!body && !body.classList.contains('notloggedin') && !document.querySelector('form#login'),
+                        loginError: error ? (error.innerText || error.textContent || '').trim() : ''
+                      };
+                    }"""
+                ) or {}
+                if state.get("authenticated"):
+                    return
+                if state.get("loginError"):
+                    raise RuntimeError(
+                        "Moodle no aceptó el inicio de sesión. Revisa el acceso en la ventana "
+                        "de Chromium o completa el paso de SSO/2FA."
+                    )
+            except RuntimeError:
+                raise
+            except Exception:
+                # Durante una redirección el DOM puede estar cambiando; vuelve a sondear.
+                continue
+            self.page.wait_for_timeout(500)
+        raise RuntimeError(
+            "No se confirmó el inicio de sesión en Moodle. Si el campus usa SSO o 2FA, "
+            "completa el acceso en Chromium."
+        )
+
+    def _login_with_credentials(self, username, password):
+        """Completa el formulario estándar de Moodle sin guardar las credenciales."""
+        user_field = self.page.locator(
+            'input[name="username"], input#username, input[autocomplete="username"]'
+        ).first
+        password_field = self.page.locator(
+            'input[name="password"], input#password, input[type="password"]'
+        ).first
+        try:
+            user_field.wait_for(state="visible", timeout=5_000)
+            password_field.wait_for(state="visible", timeout=2_000)
+        except PlaywrightTimeoutError:
+            return False
+
+        user_field.fill(username)
+        password_field.fill(password)
+        form = self.page.locator("form#login, form.login-form").first
+        submit = form.locator(
+            '#loginbtn, button[type="submit"], input[type="submit"]'
+        ).first
+        if submit.count() == 0:
+            submit = password_field.locator("xpath=ancestor::form[1]").locator(
+                '#loginbtn, button[type="submit"], input[type="submit"]'
+            ).first
+        if submit.count() == 0:
+            return False
+        submit.click(timeout=5_000)
+        return True
 
     def _edit_mode_toggle(self):
         toggle = self.page.locator('.editmode-switch-form input[name="setmode"], input[name="setmode"]').first
@@ -73,6 +203,8 @@ class MoodleClient:
         toggle.click()
         # Moodle envía el formulario y recarga la página con la edición activa.
         for _ in range(40):
+            if self._cancel_requested():
+                raise RuntimeError("La auditoría fue cancelada.")
             self.page.wait_for_timeout(500)
             try:
                 self.page.wait_for_load_state("domcontentloaded")
@@ -83,10 +215,11 @@ class MoodleClient:
                 continue
         raise RuntimeError("Se pulsó «Modo de edición», pero Moodle no lo dejó activado.")
 
-    def open_course(self, course_url):
+    def open_course(self, course_url, enable_edit_mode=True):
         self.page.goto(course_url, wait_until="domcontentloaded")
         self._wait_for_manual_login()
-        self.ensure_edit_mode()
+        if enable_edit_mode:
+            self.ensure_edit_mode()
 
     def _week_url(self, week):
         """Enlace de la semana (?section=N) tomado de cualquier enlace con ese nombre, aunque esté oculto.
@@ -648,6 +781,192 @@ class MoodleClient:
             # y el campo #id_name no es visible, así que esperarlo agotaba los 30 s).
             self._upload_h5p(entry["title"], entry["path"])
         return self._save_and_verify(entry["title"], destination["module"], previous_count, on_before_save)
+
+    # ------------------------------------------------------------------
+    # Auditoria de curso (solo lectura): semanas, recursos y apertura.
+    # ------------------------------------------------------------------
+
+    def list_weeks(self):
+        """Secciones del índice y del DOM del curso, en orden numérico."""
+        try:
+            crudos = self.page.evaluate(
+                """() => {
+                  const norm = value => String(value || '').replace(/\\s+/g, ' ').trim();
+                  const out = [];
+                  const seen = new Set();
+                  const sections = new Map();
+                  for (const link of document.querySelectorAll('a[href*="section="]')) {
+                    const href = link.getAttribute('href') || '';
+                    const text = norm(link.textContent);
+                    if (!href || !text) continue;
+                    const url = new URL(link.href, location.href);
+                    const section = url.searchParams.get('section');
+                    if (!section || !/^\\d+$/.test(section) || sections.has(section)) continue;
+                    sections.set(section, { text: text, href: url.href });
+                  }
+                  // Algunos formatos Moodle no publican enlaces a cada semana;
+                  // aun así dejan todas las secciones en el DOM de la página.
+                  for (const section of document.querySelectorAll('.course-section, li.section[id^="section-"], [data-sectionid]')) {
+                    const match = String(section.id || '').match(/(?:section-|course-section-)(\\d+)/);
+                    const id = section.getAttribute('data-sectionid') || (match && match[1]) || '';
+                    if (!/^\\d+$/.test(id) || sections.has(id)) continue;
+                    const heading = section.querySelector('.sectionname, .section-title, h3, h4');
+                    const text = norm(heading ? heading.innerText || heading.textContent : (id === '0' ? 'General' : 'Semana ' + id));
+                    const url = new URL(location.href);
+                    url.searchParams.set('section', id);
+                    sections.set(id, { text: text, href: url.href });
+                  }
+                  for (const item of sections.values()) out.push(item);
+                  return out;
+                }"""
+            )
+        except Exception:
+            crudos = []
+        return parse_week_links(crudos)
+
+    def open_week_url(self, url, nombre=""):
+        """Abre una semana por su enlace directo, sin depender de pestañas visibles."""
+        self.page.goto(url, wait_until="domcontentloaded", timeout=20_000)
+        try:
+            self.page.wait_for_load_state("networkidle", timeout=5_000)
+        except PlaywrightTimeoutError:
+            pass
+        self.page.wait_for_timeout(250)
+        self.current_week = str(nombre or "").strip()
+        self.current_section_id = parse_qs(urlparse(self.page.url).query).get("section", [""])[0]
+
+    def list_week_activities(self):
+        """Recursos de la semana abierta (sin las etiquetas de bloque)."""
+        try:
+            crudos = self.page.evaluate(
+                """() => {
+                  const norm = value => String(value || '').normalize('NFD').replace(/[\\u0300-\\u036f]/g, '').replace(/\\s+/g, ' ').trim();
+                  const out = [];
+                  const seen = new Set();
+                  for (const card of document.querySelectorAll('[id^="module-"], [data-cmid]')) {
+                    const cmid = card.getAttribute('data-cmid') || '';
+                    const id = card.id || ('module-' + cmid);
+                    if (!id || seen.has(id)) continue;
+                    seen.add(id);
+                    const modtype = (Array.from(card.classList).find(name => name.indexOf('modtype_') === 0) || '').replace('modtype_', '');
+                    const link = card.querySelector('a[href]:not([href*="#"]):not([href*="action=edit"])');
+                    const textoLimpio = node => {
+                      if (!node) return '';
+                      const clone = node.cloneNode(true);
+                      clone.querySelectorAll('.accesshide, .sr-only, .visually-hidden').forEach(item => item.remove());
+                      return norm(clone.innerText || clone.textContent || '');
+                    };
+                    const nombreActividad = card.querySelector('.activityname .instancename, .activityname');
+                    const nombreInstancia = card.querySelector('.instancename');
+                    const titulos = [
+                      textoLimpio(nombreActividad), textoLimpio(nombreInstancia),
+                      textoLimpio(link), link && norm(link.getAttribute('aria-label')),
+                      link && norm(link.getAttribute('title'))
+                    ].filter(Boolean);
+                    if (!titulos.length) titulos.push(norm(card.textContent || ''));
+                    out.push({ id: id, modtype: modtype, titulos_candidatos: titulos.map(t => t.slice(0, 200)), href: link ? link.href : '' });
+                  }
+                  return out;
+                }"""
+            )
+        except Exception:
+            crudos = []
+        return parse_activity_cards(crudos, self.current_week)
+
+    def audit_activity(self, url):
+        """Reusa una pestaña para sondear la actividad o capturar una descarga directa."""
+        page = self.audit_page
+        if page is None or page.is_closed():
+            page = self.context.new_page()
+            self.audit_page = page
+        descargas = []
+        on_download = lambda descarga: descargas.append(descarga)
+        page.on("download", on_download)
+
+        def resultado_descarga():
+            if not descargas:
+                return None
+            descarga = descargas[-1]
+            nombre = str(descarga.suggested_filename or "recurso")
+            try:
+                ruta = descarga.path()
+                with open(ruta, "rb") as archivo:
+                    contenido = archivo.read(64 * 1024 * 1024 + 1)
+                if len(contenido) > 64 * 1024 * 1024:
+                    return {"download": {"filename": nombre, "error": "El archivo supera 64 MB."}}
+                return {"download": {"filename": nombre, "bytes": contenido}}
+            except Exception as exc:
+                return {"download": {"filename": nombre, "error": str(exc)[:160]}}
+
+        try:
+            if self._cancel_requested():
+                return {"cancelled": True}
+            try:
+                # `commit` no se queda esperando el DOM de una navegación que
+                # Moodle convirtió en descarga de archivo.
+                page.goto(url, wait_until="commit", timeout=15_000)
+            except Exception:
+                captura = resultado_descarga()
+                if captura:
+                    return captura
+                raise
+            captura = resultado_descarga()
+            if captura:
+                return captura
+            if self._cancel_requested():
+                return {"cancelled": True}
+            try:
+                page.wait_for_load_state("domcontentloaded", timeout=6_000)
+            except PlaywrightTimeoutError:
+                pass
+            try:
+                page.wait_for_load_state("networkidle", timeout=3_000)
+            except PlaywrightTimeoutError:
+                pass
+            try:
+                page.wait_for_function(
+                    """() => {
+                      const frame = document.querySelector('.h5p-iframe, iframe.h5p-iframe, iframe[src*=\"h5p\"]');
+                      if (!frame) return true;
+                      if ((frame.offsetHeight || 0) > 80) return true;
+                      try { return !!(frame.contentDocument && frame.contentDocument.body && frame.contentDocument.body.innerText.trim()); }
+                      catch (_) { return false; }
+                    }""",
+                    timeout=5_000,
+                )
+            except PlaywrightTimeoutError:
+                pass
+            try:
+                return page.evaluate(_SONDA_ACTIVIDAD_JS)
+            except Exception as exc:
+                return {"error": "No se pudo leer la página del recurso: " + str(exc)[:160]}
+        except Exception as exc:
+            captura = resultado_descarga()
+            if captura:
+                return captura
+            if isinstance(exc, PlaywrightTimeoutError):
+                return {
+                    "error": "Moodle no terminó de abrir el recurso dentro del tiempo de espera.",
+                    "timeout": True,
+                }
+            return {"error": "No se pudo abrir la actividad: " + str(exc)[:160]}
+        finally:
+            try:
+                page.remove_listener("download", on_download)
+            except Exception:
+                pass
+
+    def fetch_bytes(self, url, tope=64 * 1024 * 1024):
+        """Descarga un archivo del curso con la sesión abierta (para validar el PDF)."""
+        response = self.context.request.get(url, timeout=15_000)
+        if not response.ok:
+            raise RuntimeError(
+                "El curso respondió " + str(response.status) + " al descargar el archivo."
+            )
+        cuerpo = response.body()
+        if len(cuerpo) > tope:
+            raise RuntimeError("El archivo supera el límite permitido por la auditoría.")
+        return cuerpo
 
     def close(self):
         try:

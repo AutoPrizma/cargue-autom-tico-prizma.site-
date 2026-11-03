@@ -6,7 +6,6 @@ from __future__ import annotations
 import json
 import os
 import threading
-import sys
 import uuid
 
 from fastapi import Request
@@ -100,13 +99,3 @@ def _issue_counts(issues):
         "error": sum(issue.severity is Severity.ERROR for issue in issues),
         "warning": sum(issue.severity is Severity.WARNING for issue in issues),
     }
-
-def _es_google_conectado(usuario: str) -> bool:
-    main_mod = sys.modules.get("auto_prizma.integrations.google.oauth")
-    if main_mod and hasattr(main_mod, "_google_conectado"):
-        try:
-            return bool(main_mod._google_conectado(usuario))
-        except Exception:
-            pass
-    token_path = os.path.join(BASE_DIR, "data", f"tokens_{usuario}.json")
-    return os.path.exists(token_path)

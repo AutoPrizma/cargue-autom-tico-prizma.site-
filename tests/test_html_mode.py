@@ -12,10 +12,9 @@ import zipfile
 import pytest
 
 from auto_prizma.automation.prizma import engine, html_field
-from auto_prizma.automation.prizma import engine_overrides
 from auto_prizma.services import upload_jobs
 
-resolver_recurso = engine_overrides._RESOLVER_RECURSO_ORIGINAL
+resolver_recurso = engine.resolver_recurso
 
 CODIGO = "<html>\n<head><style>h1{color:#123}</style></head>\n<body><h1>Presupuesto & más</h1></body>\n</html>\n"
 
@@ -297,7 +296,6 @@ def motor_html(monkeypatch, tmp_path):
         raise AssertionError("en modo HTML no se usa el campo de archivo Recurso")
 
     monkeypatch.setattr(engine, "PRIZMA_VACIAR_RECURSO_CON_HTML", True)
-    monkeypatch.setattr(engine, "validar_carpeta_drive_para_actividad", lambda a: None)
     monkeypatch.setattr(
         engine,
         "resolver_recurso",
@@ -517,7 +515,7 @@ def test_resolver_finds_html_file_by_activity_name(tmp_path):
     actividad = {
         "fila_excel": 5, "hoja": "Curso A", "programa": "P", "curso": "C", "semana": "1",
         "unidad": "Unidad 1", "nombre": "Infografía de costos", "categoria_prizma": "OVI",
-        "tipo_recurso": "Infografía", "tipo_archivo": "HTML", "enlace": "", "url_recurso": "",
+        "tipo_recurso": "Infografía", "tipo_archivo": "HTML", "enlace": "",
     }
     carpeta = tmp_path / "extraccion"
     carpeta.mkdir()
@@ -603,7 +601,7 @@ def test_engine_converts_h5p_activities_when_format_is_html(monkeypatch, tmp_pat
         "nombre": "Actividad", "categoria_prizma": "OVA", "tipo_archivo": "H5P",
     }
     monkeypatch.setattr(engine, "sync_playwright", lambda: _Playwright())
-    monkeypatch.setattr(engine, "iniciar_sesion_prizma", lambda *a: None)
+    monkeypatch.setattr(engine, "iniciar_sesion_prizma", lambda *a, **k: None)
     monkeypatch.setattr(engine, "leer_actividades_excel", lambda *a, **k: [dict(actividad)])
     monkeypatch.setattr(engine, "crear_indice_recursos", lambda ruta: [{"nombre": "Actividad.html"}])
     monkeypatch.setattr(engine, "asegurar_listado", lambda pagina: True)
@@ -650,4 +648,3 @@ def test_save_click_exception_is_reported_with_its_cause(motor_html, monkeypatch
 
 def test_prizma_form_errors_are_part_of_save_diagnostics():
     assert "p.form-error" in engine._SELECTORES_ALERTAS_PRIZMA
-

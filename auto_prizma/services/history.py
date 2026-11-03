@@ -8,14 +8,16 @@ import csv
 import os
 import re
 import threading
+from datetime import datetime, timedelta
 
 from auto_prizma.core.clock import _ahora_colombia, _ahora_colombia_iso
-from auto_prizma.core.config import HISTORIAL_PATH, RESULTADOS_DIR
+from auto_prizma.core.config import HISTORIAL_PATH, LOCAL_DATA_RETENTION_DAYS, RESULTADOS_DIR
 from auto_prizma.core.storage import read_json, write_json_atomic
 from auto_prizma.services.auth import _normalizar_usuario, _usuario_actual
 
 
 HISTORIAL_LOCK = threading.Lock()
+DIAS_CONSERVAR_HISTORIAL = LOCAL_DATA_RETENTION_DAYS
 
 
 # ============================================================
@@ -67,6 +69,57 @@ def _guardar_historial(registros):
     write_json_atomic(HISTORIAL_PATH, registros)
 
 
+def _purgar_registros_viejos(registros, ahora=None):
+    """Elimina registros vencidos y sus CSV, sin salir de la carpeta local."""
+    ahora = ahora or _ahora_colombia()
+    limite = ahora - timedelta(days=DIAS_CONSERVAR_HISTORIAL)
+    conservar = []
+    vencidos = []
+    for registro in registros:
+        try:
+            fecha = datetime.fromisoformat(str(registro.get("fecha_iso") or ""))
+            if fecha.tzinfo is None:
+                fecha = fecha.replace(tzinfo=ahora.tzinfo)
+        except (TypeError, ValueError):
+            # Fechas ilegibles se conservan por seguridad.
+            conservar.append(registro)
+            continue
+        (vencidos if fecha < limite else conservar).append(registro)
+
+    nombres_activos = {
+        os.path.basename(str(r.get("archivo_reporte") or ""))
+        for r in conservar
+    }
+    nombres_borrar = {
+        os.path.basename(str(r.get("archivo_reporte") or ""))
+        for r in vencidos
+    } - nombres_activos
+    return conservar, nombres_borrar
+
+
+def _eliminar_reportes_viejos(nombres):
+    for nombre in nombres:
+        if not nombre:
+            continue
+        ruta = os.path.join(RESULTADOS_DIR, nombre)
+        try:
+            os.remove(ruta)
+        except FileNotFoundError:
+            pass
+        except OSError:
+            pass
+
+
+def limpiar_historial_viejo():
+    """Purge registros y reportes locales con más de 15 días."""
+    with HISTORIAL_LOCK:
+        registros = _cargar_historial()
+        conservados, reportes_viejos = _purgar_registros_viejos(registros)
+        if len(conservados) != len(registros):
+            _guardar_historial(conservados)
+        _eliminar_reportes_viejos(reportes_viejos)
+
+
 def _agregar_registro_historial(registro_id, ruta_reporte, cursos, estado_final, usuario_app, tipo=None):
     """Escribe una fila en data/historial.json si no existe ya ese id.
     Usado tanto por cargues de recursos (OVI/OVA/Retos) como por
@@ -76,8 +129,12 @@ def _agregar_registro_historial(registro_id, ruta_reporte, cursos, estado_final,
 
     with HISTORIAL_LOCK:
         registros = _cargar_historial()
+        registros_limpios, reportes_viejos = _purgar_registros_viejos(registros)
 
-        if any(r.get("id") == registro_id for r in registros):
+        if any(r.get("id") == registro_id for r in registros_limpios):
+            if len(registros_limpios) != len(registros):
+                _guardar_historial(registros_limpios)
+            _eliminar_reportes_viejos(reportes_viejos)
             return False
 
         registro = {
@@ -90,8 +147,9 @@ def _agregar_registro_historial(registro_id, ruta_reporte, cursos, estado_final,
         }
         if tipo:
             registro["tipo"] = tipo
-        registros.append(registro)
-        _guardar_historial(registros)
+        registros_limpios.append(registro)
+        _guardar_historial(registros_limpios)
+        _eliminar_reportes_viejos(reportes_viejos)
         return True
 
 
@@ -129,6 +187,7 @@ def _historial_del_usuario(usuario=None):
     muestran a nadie, para no filtrar reportes de otros.
     """
     usuario = usuario or _usuario_actual()
+    limpiar_historial_viejo()
 
     return [
         registro for registro in _cargar_historial()

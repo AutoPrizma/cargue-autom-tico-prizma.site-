@@ -3,8 +3,7 @@
 #
 # La app NO lee .env automaticamente, por eso las variables se exportan
 # aqui. Para correr la app basica NO se necesita ninguna: todo tiene valor
-# por defecto. Solo se llenan las de Google si vas a analizar matrices por
-# enlace de Google Sheets o carpetas de Drive.
+# por defecto. Las matrices y documentos se cargan desde archivos locales.
 
 set -euo pipefail
 cd "$(dirname "$0")"
@@ -16,13 +15,6 @@ if [ -f .env ]; then
   . ./.env
   set +a
 fi
-
-# --- Google (OPCIONAL) ---
-# Viven en .env. Si estan vacias, la app corre igual; ese boton simplemente
-# pedira conectar Google despues.
-export GOOGLE_CLIENT_ID="${GOOGLE_CLIENT_ID:-}"
-export GOOGLE_CLIENT_SECRET="${GOOGLE_CLIENT_SECRET:-}"
-export GOOGLE_REDIRECT_URI="${GOOGLE_REDIRECT_URI:-http://127.0.0.1:8000/google/callback}"
 
 # --- Opcionales (no tocar si no las necesitas) ---
 # AUTO_PRIZMA_SECRET      si falta, la app genera una clave en data/secreto_sesion.txt

@@ -1,16 +1,18 @@
 import io
+import json
 import zipfile
 
 import pytest
 
 from auto_prizma.domain.moodle_resources import destination_for, normalize_key, resolve_resource
 from auto_prizma.services import moodle_resources
+from auto_prizma.web.moodle_views import _item
 
 
 def _zip_bytes():
     output = io.BytesIO()
     with zipfile.ZipFile(output, "w") as archive:
-        archive.writestr("semana/U1-T1-Origen y transformacion de la analitica.pdf", b"pdf")
+        archive.writestr("semana/U1-T1-Origen y transformacion de la analitica.pdf", b"%PDF-1.4 test")
         archive.writestr("otros/solo-notas.txt", b"no se indexa")
     return output.getvalue()
 
@@ -96,10 +98,182 @@ def test_preview_extracts_only_supported_resources_and_keeps_course_owner(tmp_pa
     assert len(moodle_resources.index_resource_files(job["resources_root"])) == 1
 
 
+def test_moodle_preview_compares_h5p_package_and_visible_titles_to_matrix(tmp_path, monkeypatch):
+    monkeypatch.setattr(moodle_resources, "UPLOADS_DIR", str(tmp_path / "uploads"))
+    h5p_bytes = io.BytesIO()
+    with zipfile.ZipFile(h5p_bytes, "w") as h5p:
+        h5p.writestr("h5p.json", json.dumps({"title": "s"}))
+        h5p.writestr(
+            "content/content.json",
+            json.dumps({"title": "Actividad presupuestos", "metadata": {"title": "Actividad presupuestos"}}),
+        )
+    resources = io.BytesIO()
+    with zipfile.ZipFile(resources, "w") as archive:
+        archive.writestr("H5P - Actividad presupuestos.h5p", h5p_bytes.getvalue())
+    matrix = (
+        "Programa,Curso,Semana correspondiente,Unidad,Nombre del recurso,Categoría,Tipo de recurso,Enlace\n"
+        "P,C,Semana 1,Unidad 1,Actividad presupuestos,OVI,Infografía,Infografía - Actividad presupuestos\n"
+    ).encode("utf-8")
+
+    job = moodle_resources.create_moodle_preview(
+        "adminlocal", "matriz.csv", matrix, "recursos.zip", resources.getvalue(),
+        "https://prizma.americana.edu.co/course/view.php?id=42",
+    )
+
+    preview = job["entries"][0]["h5p_preview"]
+    assert preview["status"] == "match"
+    assert preview["package_title"] == "s"
+    assert preview["visible_titles"] == ["Actividad presupuestos"]
+    assert preview["cover_title"] == "Actividad presupuestos"
+    assert preview["package_similarity"] < 0.51
+    assert "coincide con el de la matriz" in preview["detail"]
+    rendered = _item(job["entries"][0], 0, False)
+    assert "Título coincide" in rendered
+    assert "Título H5P" in rendered
+    assert "Actividad presupuestos" in rendered
+
+
+def test_title_below_threshold_requires_manual_attachment(tmp_path, monkeypatch):
+    monkeypatch.setattr(moodle_resources, "UPLOADS_DIR", str(tmp_path / "uploads"))
+    h5p_bytes = io.BytesIO()
+    with zipfile.ZipFile(h5p_bytes, "w") as h5p:
+        h5p.writestr("h5p.json", json.dumps({"title": "ZZZZZZZZZZ"}))
+    resources = io.BytesIO()
+    with zipfile.ZipFile(resources, "w") as archive:
+        archive.writestr("Actividad presupuestos.h5p", h5p_bytes.getvalue())
+    matrix = (
+        "Programa,Curso,Semana correspondiente,Unidad,Nombre del recurso,Categoría,Tipo de recurso,Enlace\n"
+        "P,C,Semana 1,Unidad 1,Actividad presupuestos,OVI,Infografía,Infografía - Actividad presupuestos\n"
+    ).encode("utf-8")
+
+    job = moodle_resources.create_moodle_preview(
+        "adminlocal", "matriz.csv", matrix, "recursos.zip", resources.getvalue(),
+        "https://prizma.americana.edu.co/course/view.php?id=42",
+    )
+
+    entry = job["entries"][0]
+    assert entry["status"] == "title-review"
+    with pytest.raises(ValueError, match="no están disponibles"):
+        moodle_resources.publishable_entries(job, [entry["key"]])
+    rendered = _item(entry, 0, False)
+    assert "Título H5P por revisar" in rendered
+    assert "data-manual-resource" in rendered
+
+    attached = moodle_resources.attach_manual_resource(
+        job, entry["key"], "H5P corregido.h5p", h5p_bytes.getvalue()
+    )
+    assert attached["status"] == "matched"
+    assert attached["manual_filename"] == "H5P corregido.h5p"
+    assert moodle_resources.publishable_entries(job, [entry["key"]]) == [entry]
+
+
+def test_package_title_match_without_content_title_is_not_auto_approved(tmp_path, monkeypatch):
+    monkeypatch.setattr(moodle_resources, "UPLOADS_DIR", str(tmp_path / "uploads"))
+    h5p_bytes = io.BytesIO()
+    with zipfile.ZipFile(h5p_bytes, "w") as h5p:
+        h5p.writestr("h5p.json", json.dumps({"title": "Actividad presupuestos"}))
+        h5p.writestr(
+            "content/content.json",
+            json.dumps({"metadata": {}, "chapters": [{"metadata": {"title": "Actividad presupuestos"}}]}),
+        )
+    resources = io.BytesIO()
+    with zipfile.ZipFile(resources, "w") as archive:
+        archive.writestr("Actividad presupuestos.h5p", h5p_bytes.getvalue())
+    matrix = (
+        "Programa,Curso,Semana correspondiente,Unidad,Nombre del recurso,Categoría,Tipo de recurso,Enlace\n"
+        "P,C,Semana 1,Unidad 1,Actividad presupuestos,OVI,Infografía,Infografía - Actividad presupuestos\n"
+    ).encode("utf-8")
+
+    job = moodle_resources.create_moodle_preview(
+        "adminlocal", "matriz.csv", matrix, "recursos.zip", resources.getvalue(),
+        "https://prizma.americana.edu.co/course/view.php?id=42",
+    )
+    entry = job["entries"][0]
+
+    assert entry["h5p_preview"]["package_similarity"] == 1.0
+    assert entry["h5p_preview"]["status"] == "no-cover"
+    assert entry["status"] == "title-review"
+    assert "no se detectó" in entry["h5p_preview"]["detail"].lower()
+
+
+def test_h5p_visible_title_must_match_exactly_after_normalization(tmp_path, monkeypatch):
+    monkeypatch.setattr(moodle_resources, "UPLOADS_DIR", str(tmp_path / "uploads"))
+    h5p_bytes = io.BytesIO()
+    with zipfile.ZipFile(h5p_bytes, "w") as h5p:
+        h5p.writestr("h5p.json", json.dumps({"title": "Actividad presupuestos"}))
+        h5p.writestr(
+            "content/content.json",
+            json.dumps({"title": "Actividad presupuesto adicional", "metadata": {"title": "Actividad presupuesto adicional"}}),
+        )
+    resources = io.BytesIO()
+    with zipfile.ZipFile(resources, "w") as archive:
+        archive.writestr("Actividad presupuestos.h5p", h5p_bytes.getvalue())
+    matrix = (
+        "Programa,Curso,Semana correspondiente,Unidad,Nombre del recurso,Categoría,Tipo de recurso,Enlace\n"
+        "P,C,Semana 1,Unidad 1,Actividad presupuestos,OVI,Infografía,Infografía - Actividad presupuestos\n"
+    ).encode("utf-8")
+
+    job = moodle_resources.create_moodle_preview(
+        "adminlocal", "matriz.csv", matrix, "recursos.zip", resources.getvalue(),
+        "https://prizma.americana.edu.co/course/view.php?id=42",
+    )
+
+    assert job["entries"][0]["h5p_preview"]["status"] == "cover-mismatch"
+    assert job["entries"][0]["status"] == "title-review"
+
+
+def test_manual_pdf_can_fill_missing_matrix_row(tmp_path, monkeypatch):
+    monkeypatch.setattr(moodle_resources, "UPLOADS_DIR", str(tmp_path / "uploads"))
+    matrix = (
+        "Programa,Curso,Semana correspondiente,Unidad,Nombre del recurso,Categoría,Tipo de recurso,Enlace\n"
+        "P,C,Semana 1,Unidad 1,Lectura de apoyo,OVI,PDF,TEXTO - Lectura de apoyo\n"
+    ).encode("utf-8")
+    job = moodle_resources.create_moodle_preview(
+        "adminlocal", "matriz.csv", matrix, "recursos.zip", _zip_bytes(),
+        "https://prizma.americana.edu.co/course/view.php?id=42",
+    )
+    entry = job["entries"][0]
+    assert entry["status"] == "missing"
+
+    moodle_resources.attach_manual_resource(job, entry["key"], "lectura.pdf", b"%PDF-test")
+
+    assert entry["status"] == "matched"
+    assert job["summary"]["matched"] == 1
+    assert moodle_resources.publishable_entries(job, [entry["key"]]) == [entry]
+
+
+def test_manual_upload_rejects_wrong_extension_and_invalid_h5p(tmp_path, monkeypatch):
+    monkeypatch.setattr(moodle_resources, "UPLOADS_DIR", str(tmp_path / "uploads"))
+    matrix = (
+        "Programa,Curso,Semana correspondiente,Unidad,Nombre del recurso,Categoría,Tipo de recurso,Enlace\n"
+        "P,C,Semana 1,Unidad 1,Actividad,OVI,Infografía,Infografía - Actividad\n"
+    ).encode("utf-8")
+    job = moodle_resources.create_moodle_preview(
+        "adminlocal", "matriz.csv", matrix, "recursos.zip", _zip_bytes(),
+        "https://prizma.americana.edu.co/course/view.php?id=42",
+    )
+    entry = job["entries"][0]
+    with pytest.raises(ValueError, match="necesita un archivo .h5p"):
+        moodle_resources.attach_manual_resource(job, entry["key"], "recurso.pdf", b"%PDF")
+    with pytest.raises(ValueError, match="no es válido"):
+        moodle_resources.attach_manual_resource(job, entry["key"], "recurso.h5p", b"mal h5p")
+
+
 def test_preview_rejects_course_from_another_host(tmp_path, monkeypatch):
     monkeypatch.setattr(moodle_resources, "UPLOADS_DIR", str(tmp_path / "uploads"))
-    with pytest.raises(ValueError, match="enlace HTTPS válido"):
+    with pytest.raises(ValueError, match="ID numérico"):
         moodle_resources.validate_course_url("https://example.com/course/view.php?id=42")
+
+
+@pytest.mark.parametrize("url", [
+    "https://prizma.americana.edu.co/course/view.php",
+    "https://prizma.americana.edu.co/course/view.php?id=",
+    "https://prizma.americana.edu.co/course/view.php?id=abc",
+    "https://prizma.americana.edu.co/course/other.php?id=42",
+])
+def test_course_url_requires_moodle_course_path_and_numeric_id(url):
+    with pytest.raises(ValueError, match="ID numérico"):
+        moodle_resources.validate_course_url(url)
 
 
 def test_invalid_matrix_does_not_leave_an_uploaded_job_directory(tmp_path, monkeypatch):

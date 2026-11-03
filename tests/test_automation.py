@@ -53,7 +53,11 @@ def test_review_page_renders_phase3_prizma_panel():
     assert "prizma_clave" in review.text
     assert "bloque-acceso-prizma" in review.text
     assert "cascada_facultad" in review.text
-    assert "cascada_asignatura" in review.text
+    assert 'name="linea_academica"' in review.text
+    assert 'name="cascada_nivel"' in review.text
+    assert 'name="solo_simulacion" value="1"' in review.text
+    assert 'Validar en PRIZMA sin guardar (recomendado)' in review.text
+    assert "checked>" in review.text
     assert "btn-lanzar-prizma" in review.text
     assert "Crear y Publicar Evaluación en PRIZMA" in review.text
     assert "Ir a Carga en PRIZMA" in review.text
@@ -118,6 +122,8 @@ def test_estado_prizma_monitoring_and_json():
                 "prizma_clave": "clave_test",
                 "recordar_credenciales": "1",
                 "solo_simulacion": "1",
+                "linea_academica": "V1130 11301 30S01 COMPETENCIAS MATEMÁTICAS I",
+                "cascada_nivel": "3",
             },
             follow_redirects=False,
         )
@@ -701,21 +707,26 @@ def test_ejecutar_prizma_endpoint_respects_unchecked_simulation():
     _JOBS["job-test-real"] = {"owner": "adminlocal", "document": doc}
 
     # Posting WITHOUT solo_simulacion (simulating unchecked checkbox in HTML form)
-    response = client.post(
-        "/tests/job-test-real/ejecutar-prizma",
-        data={
-            "prizma_usuario": "12345",
-            "prizma_clave": "secret",
-            "cascada_facultad": "Fac",
-            # solo_simulacion omitted!
-        },
-        follow_redirects=False,
-    )
+    with patch("auto_prizma.evaluative_tests.routes.threading.Thread") as thread_cls:
+        response = client.post(
+            "/tests/job-test-real/ejecutar-prizma",
+            data={
+                "prizma_usuario": "12345",
+                "prizma_clave": "secret",
+                "cascada_facultad": "Fac",
+                "linea_academica": "V1130 11301 30S01 COMPETENCIAS MATEMÁTICAS I",
+                "cascada_nivel": "3",
+                # solo_simulacion omitted!
+            },
+            follow_redirects=False,
+        )
     assert response.status_code == 303
-    with _AUTOMATION_LOCK:
-        job_state = _AUTOMATION_JOBS.get("job-test-real")
-        assert job_state is not None
-        assert job_state["simulacion"] is False
+    kwargs = thread_cls.call_args.kwargs["kwargs"]
+    assert kwargs["simulacion"] is False
+    assert kwargs["cascada_override"]["programa"] == "V1130"
+    assert kwargs["cascada_override"]["pensum"] == "11301"
+    assert kwargs["cascada_override"]["asignatura"] == "30S01 COMPETENCIAS MATEMÁTICAS I"
+    assert kwargs["cascada_override"]["nivel"] == "3"
 
 
 def test_status_prizma_renders_error_banner_on_failure():

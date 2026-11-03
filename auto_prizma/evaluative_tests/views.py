@@ -43,15 +43,15 @@ p{color:var(--muted);line-height:1.5;margin:0 0 14px}
 input,textarea,select{width:100%;border:1px solid var(--borde-2);border-radius:10px;padding:11px 13px;font:inherit;color:inherit;background:var(--panel)}
 textarea{min-height:78px;resize:vertical}
 label{display:block;font-size:12px;font-weight:800;margin:13px 0 6px;color:var(--texto-2)}
-button,.boton{display:inline-flex;align-items:center;justify-content:center;gap:8px;border:0;border-radius:10px;padding:12px 18px;background:var(--morado);color:#fff;font-weight:800;font-size:14px;text-decoration:none;cursor:pointer}
+button,.boton{display:inline-flex;align-items:center;justify-content:center;gap:8px;border:1px solid transparent;border-radius:12px;padding:12px 18px;background:var(--boton);color:var(--boton-texto);font-weight:800;font-size:14px;text-decoration:none;cursor:pointer}
 button:hover,.boton:hover{opacity:.93}
 button.secundario,.boton.secundario{background:var(--panel);color:var(--acento-texto);border:1px solid var(--acento-borde)}
 .boton.secundario.peligro{border-color:var(--rojo-borde);color:var(--rojo)}
 .acciones{display:flex;gap:12px;flex-wrap:wrap;margin-top:22px}
-.test-card{border:1px solid var(--borde);border-radius:16px;padding:22px;margin-top:18px;background:var(--panel-2);box-shadow:0 4px 12px rgba(0,0,0,.02)}
+.test-card{border:1px solid var(--borde);border-radius:16px;padding:22px;margin-top:18px;background:var(--panel-2);box-shadow:var(--sombra-sm)}
 .section{border-left:4px solid var(--acento);padding-left:16px;margin:20px 0}
 .question{background:var(--panel);border:1px solid var(--borde);border-radius:12px;padding:16px;margin:14px 0;transition:all .2s;scroll-margin-top:24px}
-.question.question-error{border:2px solid #f04438 !important;background:var(--rojo-suave) !important;box-shadow:0 0 0 4px rgba(240,68,56,.12)}
+.question.question-error{border:2px solid var(--rojo);background:var(--rojo-suave);box-shadow:0 0 0 4px var(--rojo-foco)}
 .badge{display:inline-block;border-radius:999px;padding:5px 10px;font-size:12px;font-weight:800;margin:3px 6px 3px 0}
 .badge.ok{background:var(--verde-suave);color:var(--verde)}
 .badge.warn{background:var(--ambar-suave);color:var(--ambar)}
@@ -69,7 +69,7 @@ button.secundario,.boton.secundario{background:var(--panel);color:var(--acento-t
 @media(max-width:900px){.grid2{grid-template-columns:1fr}}
 
 /* ---- Estados dinamicos reutilizables (banners, kpis, badges, tarjeta en vivo) ---- */
-.status-banner{display:flex;gap:14px;align-items:flex-start;margin-bottom:20px;border-radius:14px;padding:20px;border:2px solid transparent;box-shadow:0 4px 12px rgba(0,0,0,.06)}
+.status-banner{display:flex;gap:14px;align-items:flex-start;margin-bottom:20px;border-radius:14px;padding:20px;border:2px solid transparent;box-shadow:var(--sombra-sm)}
 .status-banner .status-icon{width:40px;height:40px;border-radius:50%;display:grid;place-items:center;font-size:22px;font-weight:900;flex-shrink:0;background:var(--panel)}
 .status-banner h3{margin:0 0 6px;font-size:17px;font-weight:800}
 .status-banner p{margin:0 0 12px;font-size:14px;line-height:1.5;color:var(--texto-2)}
@@ -99,14 +99,14 @@ button.secundario,.boton.secundario{background:var(--panel);color:var(--acento-t
 .badge-dinamico--detenido{background:var(--panel-2);color:var(--muted)}
 .badge-dinamico--omitido{background:var(--ambar-suave);color:var(--ambar)}
 
-.live-card{border-radius:16px;padding:20px 24px;box-shadow:0 4px 14px rgba(0,0,0,.04);border:2px solid transparent;margin-bottom:24px;transition:all .3s ease}
+.live-card{border-radius:16px;padding:20px 24px;box-shadow:var(--sombra-sm);border:2px solid transparent;margin-bottom:24px;transition:all .3s ease}
 .live-card--running{background:var(--acento-suave);border-color:var(--acento)}
-.live-card--waiting{background:var(--rojo-suave);border-color:#ef4444}
+.live-card--waiting{background:var(--rojo-suave);border-color:var(--rojo)}
 .live-card h3{margin:0;font-size:16px;font-weight:800;color:var(--texto)}
 .live-card p{margin:3px 0 0;font-size:13px;color:var(--muted)}
 
 .progress-track{background:var(--borde);border-radius:999px;height:9px;overflow:hidden}
-.progress-fill{background:linear-gradient(90deg,#5548e8,#818cf8);height:100%;transition:width .4s ease}
+.progress-fill{background:var(--boton);height:100%;transition:width .4s ease}
 
 .mode-option{flex:1;min-width:180px;border:1px solid var(--borde);border-radius:12px;padding:14px;cursor:pointer;background:var(--panel);transition:all .2s}
 .mode-option strong{margin-left:7px;font-size:14px}
@@ -122,7 +122,7 @@ button.secundario,.boton.secundario{background:var(--panel);color:var(--acento-t
 .chip-morado{display:inline-block;font-size:12px;background:var(--acento-suave);padding:3px 8px;border-radius:6px;color:var(--acento-texto);font-weight:600}
 .bloque-prizma{margin-top:28px;border:2px solid var(--acento) !important;background:var(--acento-suave) !important;scroll-margin-top:24px}
 
-#btn-guardar-correcciones.is-dirty{background:#e11d48 !important;color:#fff !important;font-weight:800;box-shadow:0 0 0 4px rgba(225,29,72,.35)}
+#btn-guardar-correcciones.is-dirty{background:var(--acento);color:var(--boton-texto);font-weight:800;box-shadow:0 0 0 4px var(--foco)}
 """
 
 # Etiqueta del menu -> clave de web/layout.NAV_ITEMS (los llamadores pasan la etiqueta).
@@ -132,7 +132,6 @@ _CLAVES_MENU = {
     "Cargue actual": "cargue",
     "Historial": "historial",
     "Reportes": "reportes",
-    "Mi contraseña": "clave",
 }
 
 
@@ -182,12 +181,16 @@ def _render_review(job_id: str, job: dict, message: str = "") -> str:
     cascada_programa_val = cascada_datos.get("programa") or document.program or ""
     cascada_pensum_val = cascada_datos.get("pensum", "")
     cascada_nivel_val = cascada_datos.get("nivel", "")
-    cascada_asignatura_val = cascada_datos.get("asignatura", "")
+    linea_academica_val = cascada_datos.get("linea_academica") or " ".join(
+        parte for parte in (
+            cascada_programa_val,
+            cascada_pensum_val,
+            cascada_datos.get("codigo_asignatura", ""),
+            cascada_datos.get("asignatura", ""),
+        ) if parte
+    )
 
 
-    programa_sugerido = cascada_programa_val or document.program or ""
-    primera_semana = document.tests[0].week if document.tests else ""
-    primer_corte = document.tests[0].cut if document.tests else ""
 
     cards = []
     for test_index, test in enumerate(document.tests):
@@ -298,7 +301,7 @@ def _render_review(job_id: str, job: dict, message: str = "") -> str:
 
     <section id="bloque-acceso-prizma" class="panel bloque-prizma">
         <div style="display:flex;align-items:center;gap:14px;margin-bottom:16px;">
-            <div style="width:42px;height:42px;border-radius:12px;background:var(--morado);color:#fff;display:grid;place-items:center;font-size:22px;flex-shrink:0;">🛡</div>
+            <div style="width:42px;height:42px;border-radius:12px;background:var(--acento);color:var(--boton-texto);display:grid;place-items:center;font-size:22px;flex-shrink:0;">🛡</div>
             <div>
                 <h2 style="margin:0;font-size:20px;">Fase 3: Publicación y Carga en PRIZMA</h2>
                 <p style="margin:3px 0 0;font-size:13px;">Automatización con Playwright en tiempo real contra <strong>{html.escape(PRIZMA_HOST)}</strong></p>
@@ -322,55 +325,58 @@ def _render_review(job_id: str, job: dict, message: str = "") -> str:
                     <input type="checkbox" name="recordar_credenciales" value="1" style="width:auto;" {"checked" if creds.get("recordar", True) else ""}>
                     Recordar usuario en este equipo
                 </label>
+                <label style="display:inline-flex;align-items:center;gap:8px;cursor:pointer;font-weight:700;font-size:13px;">
+                    <input id="solo-simulacion-prizma" type="checkbox" name="solo_simulacion" value="1" style="width:auto;" checked>
+                    Validar en PRIZMA sin guardar (recomendado)
+                </label>
             </div>
 
             <div style="border-top:1px dashed var(--borde);padding-top:16px;margin-top:10px;">
-                <h3 style="margin:0 0 12px;font-size:15px;">Parámetros del Curso en PRIZMA (Selectores en Cascada)</h3>
+                <h3 style="margin:0 0 8px;font-size:15px;">Datos del curso</h3>
+                <label for="linea-academica">Línea académica del curso</label>
+                <input id="linea-academica" name="linea_academica" placeholder="V1130 11301 30S01 COMPETENCIAS MATEMÁTICAS I" value="{html.escape(linea_academica_val, quote=True)}" required>
+                <small style="display:block;margin:6px 0 14px;">Pega aquí la fila completa: Código de programa · Código de pensum · Código de asignatura · Nombre. Semana y corte se toman de cada test del Word.</small>
                 <div class="grid2">
                     <div>
                         <label>Facultad <small style="font-weight:normal;">(Opcional)</small></label>
-                        <input name="cascada_facultad" placeholder="Opcional - Facultad institucional (ej. Virtual - Derecho)" value="{html.escape(cascada_facultad_val)}">
-                    </div>
-                    <div>
-                        <label>Programa</label>
-                        <input name="cascada_programa" placeholder="Código o Nombre (ej. COD111)" value="{html.escape(cascada_programa_val)}">
-                    </div>
-                </div>
-                <div class="grid2">
-                    <div>
-                        <label>Pensum</label>
-                        <input name="cascada_pensum" placeholder="Código del pensum (ej. COD111 o Pensum 2024)" value="{html.escape(cascada_pensum_val)}">
+                        <input name="cascada_facultad" placeholder="Ej. Virtual - Derecho" value="{html.escape(cascada_facultad_val, quote=True)}">
                     </div>
                     <div>
                         <label>Nivel de pensum</label>
-                        <input name="cascada_nivel" placeholder="Nivel (ej. 3, Tres, Semestre 3...)" value="{html.escape(cascada_nivel_val)}">
-                    </div>
-                </div>
-                <div class="grid2">
-                    <div>
-                        <label>Asignatura por pensum</label>
-                        <input name="cascada_asignatura" placeholder="Código o Nombre de la asignatura" value="{html.escape(cascada_asignatura_val)}">
-                    </div>
-                    <div class="grid2">
-                        <div>
-                            <label>Semana</label>
-                            <input name="cascada_semana" placeholder="Semana" value="{html.escape(primera_semana)}">
-                        </div>
-                        <div>
-                            <label>Corte</label>
-                            <input name="cascada_corte" placeholder="Corte" value="{html.escape(primer_corte)}">
-                        </div>
+                        <input name="cascada_nivel" placeholder="Ej. 3 o Semestre 3" value="{html.escape(cascada_nivel_val, quote=True)}" required>
                     </div>
                 </div>
             </div>
 
             <div class="acciones" style="margin-top:22px;">
-                <button type="submit" id="btn-lanzar-prizma" style="background:#087f5b;color:#fff;padding:14px 28px;font-size:15px;font-weight:800;border:none;border-radius:10px;cursor:pointer;display:inline-flex;align-items:center;gap:8px;box-shadow:0 4px 12px rgba(8,127,91,0.25);transition:all .2s;">
-                    ⚡ Crear y Publicar Evaluación en PRIZMA
+                <button type="submit" id="btn-lanzar-prizma" class="boton grande">
+                    ⚡ Validar en PRIZMA sin guardar
                 </button>
             </div>
         </form>
     </section>
+
+    <script>
+    (() => {{
+        const form = document.getElementById('form-prizma');
+        const simulacion = document.getElementById('solo-simulacion-prizma');
+        const boton = document.getElementById('btn-lanzar-prizma');
+        const actualizar = () => {{
+            if (!boton || !simulacion) return;
+            boton.textContent = simulacion.checked
+                ? '⚡ Validar en PRIZMA sin guardar'
+                : '⚡ Crear y Publicar Evaluación en PRIZMA';
+        }};
+        if (simulacion) simulacion.addEventListener('change', actualizar);
+        if (form) form.addEventListener('submit', () => {{
+            if (!boton) return;
+            boton.disabled = true;
+            boton.textContent = simulacion && simulacion.checked
+                ? '⏳ Validando sin guardar...'
+                : '⏳ Creando y publicando...';
+        }});
+    }})();
+    </script>
 
     <script>
     const initial={state};
@@ -509,7 +515,7 @@ def _render_review(job_id: str, job: dict, message: str = "") -> str:
         if (qEl) {{
             qEl.scrollIntoView({{ behavior: 'smooth', block: 'center' }});
             qEl.style.transition = 'all 0.3s ease';
-            qEl.style.boxShadow = '0 0 0 4px #6366f1';
+            qEl.style.boxShadow = '0 0 0 4px var(--foco)';
             setTimeout(() => {{ qEl.style.boxShadow = ''; }}, 2200);
             const firstInput = qEl.querySelector('input, select, textarea');
             if (firstInput) firstInput.focus();

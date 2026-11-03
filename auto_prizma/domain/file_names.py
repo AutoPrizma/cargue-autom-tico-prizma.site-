@@ -1,8 +1,7 @@
 """Nombres de archivo de recursos (H5P/PDF): nombre base y clave exacta.
 
-Reune normalizaciones que estaban duplicadas entre la validacion Drive-ZIP
-(services/drive_zip_validation.py, engine_overrides) y las reglas de
-emparejamiento (domain/drive_resource_policy.py).
+Reúne normalizaciones de nombres de archivo utilizadas por el análisis y el
+emparejamiento de recursos incluidos en el ZIP.
 
 Nota: el motor usa ademas clave_nombre_archivo_exacto (engine.py), que ignora
 mayusculas; tiene otra semantica a proposito y no se unifica aqui.

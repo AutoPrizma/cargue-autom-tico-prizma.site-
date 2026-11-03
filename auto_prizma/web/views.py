@@ -5,32 +5,10 @@ pone web/layout.py; aqui solo va el contenido de Inicio y su CSS/JS propio.
 """
 
 import html
-import json
 
-from auto_prizma.services.auth import (
-    _nombre_visible,
-    _usuario_actual,
-)
-from auto_prizma.integrations.google.oauth import _google_conectado
-from auto_prizma.services.drive_zip_validation import _bytes_legibles
 from auto_prizma.services.upload_jobs import _codificar_clave_actividad
 from auto_prizma.web.icons import icon
 from auto_prizma.web.layout import render_page, status_pills
-
-
-# Color de cada tipo de advertencia de la comparacion Drive/ZIP.
-_CLASE_ADVERTENCIA = {
-    "Sin archivo en Drive": "badge-rojo",
-    "Sin enlace Drive": "badge-rojo",
-    "Carpeta Drive no legible": "badge-rojo",
-    "Sin equivalente en el ZIP": "badge-rojo",
-    "Varios archivos en Drive": "badge-ambar",
-    "Tamano distinto": "badge-ambar",
-    "Recurso en varias filas": "badge-ambar",
-    "Copia repetida en el ZIP": "badge-ambar",
-    "Copia repetida en Drive": "badge-ambar",
-    "Nombre distinto": "badge-azul",
-}
 
 
 def _archivo_listo(input_id, nombre_icono):
@@ -73,58 +51,25 @@ def _pantalla_inicio(error, e):
             + "<div><strong>No se pudo continuar</strong><p>" + e(error) + "</p></div></div>"
         )
 
-    google_conectado = _google_conectado()
-    if google_conectado:
-        aviso_google = '<div id="estado-enlace" class="aviso" aria-live="polite" hidden></div>'
-    else:
-        aviso_google = (
-            '<div id="estado-enlace" class="aviso info" aria-live="polite">' + icon("info")
-            + "<div><strong>Conecta tu cuenta de Google</strong>"
-            "<p>Necesario para leer la matriz por link. Cada persona conecta la suya, con permiso de solo lectura.</p>"
-            '<a class="boton chico" href="/google/conectar">Conectar con Google</a></div></div>'
-        )
-
     return f"""
     <section class="panel encabezado-inicio">
-        <div class="saludo">
-            <h1>Hola, {e(_nombre_visible(_usuario_actual()))}</h1>
+        <div class="saludo-bloque"><span class="icono-tile">{icon("paquete")}</span><div class="saludo">
+            <h1>Hola, <span class="saludo-acento">dev</span></h1>
             <p>Carga y analiza tus actividades en PRIZMA de forma rápida y segura.</p>
-        </div>
-        {status_pills(google_conectado)}
+        </div></div>
+            {status_pills()}
     </section>
 
     {bloque_error}
 
     <form id="cargue-principal" action="/analizar" method="post" enctype="multipart/form-data" class="panel panel-principal">
-        <div class="opciones-modo" role="radiogroup" aria-label="Origen de la matriz">
-            {_opcion("modo_matriz", "link", "Por link", "Google Sheets + ZIP", "enlace", True)}
-            {_opcion("modo_matriz", "archivo", "Por archivo", "XLSX/CSV + ZIP", "documento", False)}
-        </div>
-
         <div class="grid-archivos">
-            <section class="tarjeta-archivo" id="bloque-matriz-link">
-                <div class="archivo-cabecera">
-                    <span class="icono-tile verde">{icon("hoja")}</span>
-                    <div>
-                        <h2>Google Sheets de la matriz</h2>
-                        <p>Pega el enlace de la pestaña que vas a cargar. Solo se procesa esa pestaña.</p>
-                    </div>
-                </div>
-                <label class="campo campo-borde campo-enlace" for="google-sheet-url">
-                    {icon("enlace")}
-                    <span class="sr-only">Enlace de Google Sheets</span>
-                    <input id="google-sheet-url" type="url" name="google_sheet_url"
-                           placeholder="https://docs.google.com/spreadsheets/d/..." autocomplete="off">
-                </label>
-                {aviso_google}
-            </section>
-
-            <section class="tarjeta-archivo" id="bloque-matriz-archivo" hidden>
+            <section class="tarjeta-archivo">
                 <div class="archivo-cabecera">
                     <span class="icono-tile verde">{icon("hoja")}</span>
                     <div>
                         <h2>Archivo de la matriz</h2>
-                        <p>Selecciona el XLSX o CSV descargado. En este modo no necesitas Google.</p>
+                        <p>Selecciona la matriz guardada en tu equipo.</p>
                     </div>
                 </div>
                 <label class="dropzone zona-drop" for="archivo-matriz" data-input="archivo-matriz">
@@ -132,7 +77,7 @@ def _pantalla_inicio(error, e):
                     <strong>Selecciona o arrastra tu matriz</strong>
                     <small>Archivo .xlsx o .csv</small>
                     <span class="boton">Seleccionar archivo</span>
-                    <input id="archivo-matriz" type="file" name="matriz_archivo" accept=".xlsx,.csv" disabled>
+                    <input id="archivo-matriz" type="file" name="matriz_archivo" accept=".xlsx,.csv">
                 </label>
                 {_archivo_listo("archivo-matriz", "hoja")}
             </section>
@@ -154,6 +99,35 @@ def _pantalla_inicio(error, e):
                 </label>
                 {_archivo_listo("archivo-zip", "zip")}
             </section>
+
+            <section class="tarjeta-archivo">
+                <div class="archivo-cabecera">
+                    <span class="icono-tile ambar">{icon("libro")}</span>
+                    <div>
+                        <h2>Syllabus y preparación</h2>
+                        <p>Opcional: syllabus PDF y datos para preparar la ficha del curso en PRIZMA.</p>
+                    </div>
+                </div>
+                <label class="dropzone zona-drop" for="archivo-syllabus" data-input="archivo-syllabus">
+                    {icon("subir", "icono icono-drop")}
+                    <strong>Selecciona o arrastra el syllabus</strong>
+                    <small>Archivo PDF (opcional)</small>
+                    <span class="boton">Seleccionar archivo</span>
+                    <input id="archivo-syllabus" type="file" name="syllabus_archivo" accept=".pdf">
+                </label>
+                {_archivo_listo("archivo-syllabus", "libro")}
+                <div class="campos-preparacion">
+                    <label>Línea académica
+                        <input type="text" name="linea_academica" autocomplete="off"
+                            placeholder="V1130 11301 30S01 COMPETENCIAS MATEMÁTICAS I">
+                    </label>
+                    <label>Nivel de pensum
+                        <input type="text" name="nivel_pensum" autocomplete="off"
+                            placeholder="Nivel 1">
+                    </label>
+                    <small class="nota-campos">Si los dejas vacíos, la preparación se omite. Los videos de intro y cierre se toman del ZIP.</small>
+                </div>
+            </section>
         </div>
 
         <div class="separador"></div>
@@ -167,7 +141,7 @@ def _pantalla_inicio(error, e):
                 {_tarjeta_tipo("ovi", "OVI", "Objetos Virtuales de Información", "tipo-verde", "ovi", True)}
                 {_tarjeta_tipo("ova", "OVA", "Objetos Virtuales de Aprendizaje", "tipo-azul", "ova", True)}
                 {_tarjeta_tipo("retos", "Retos Evaluativos", "Retos evaluativos en PDF", "tipo-morado", "reto", True)}
-                {_tarjeta_tipo("test_evaluativo", "Test Evaluativo", "Exámenes desde Word / Google Docs", "tipo-naranja", "test", False, ' id="chk-test"')}
+                {_tarjeta_tipo("test_evaluativo", "Test Evaluativo", "Exámenes desde Word", "tipo-naranja", "test", False, ' id="chk-test"')}
             </div>
 
             <div class="formato-recurso">
@@ -188,13 +162,8 @@ def _pantalla_inicio(error, e):
                 <span class="icono-tile naranja chico">{icon("test")}</span>
                 <div>
                     <h2>Documento de Test y datos académicos</h2>
-                    <p>Sube el archivo Word o pega el enlace de Google Docs, e indica los datos académicos del curso.</p>
+                    <p>Sube el Word; en el siguiente paso pegarás una sola línea con los datos del curso.</p>
                 </div>
-            </div>
-
-            <div class="opciones-modo compacto" role="radiogroup" aria-label="Origen del test">
-                {_opcion("modo_test", "archivo", "Por archivo Word", "Documento .docx", "word", True)}
-                {_opcion("modo_test", "link", "Por link Google Docs", "Enlace del examen", "enlace", False)}
             </div>
 
             <div class="tarjeta-archivo" id="bloque-test-archivo">
@@ -208,30 +177,6 @@ def _pantalla_inicio(error, e):
                 {_archivo_listo("archivo-test-docx", "word")}
             </div>
 
-            <div class="tarjeta-archivo" id="bloque-test-link" hidden>
-                <label class="campo campo-borde campo-enlace" for="test-google-doc-url">
-                    {icon("enlace")}
-                    <span class="sr-only">Enlace de Google Docs del examen</span>
-                    <input id="test-google-doc-url" type="url" name="test_google_doc_url"
-                           placeholder="https://docs.google.com/document/d/..." autocomplete="off" disabled>
-                </label>
-            </div>
-
-            <div class="caja-datos">
-                <div>
-                    <label for="test-datos-academicos">Datos académicos (Código Programa · Código Pensum · Código Asignatura · Nombre Asignatura)</label>
-                    <input id="test-datos-academicos" name="test_datos_academicos" type="text"
-                           placeholder="Ej: ADM101 PEN2024 MAC001 Macroeconomía Aplicada" autocomplete="off" disabled>
-                    <small>Ingresa los 3 códigos seguidos del nombre de la asignatura, separados por espacio o guion.</small>
-                </div>
-                <div>
-                    <label for="test-semestre">Semestre / Nivel de pensum</label>
-                    <select id="test-semestre" name="test_semestre" disabled>
-                        <option value="">Selecciona el semestre...</option>
-                        {"".join(f'<option value="{n}">Semestre {n}</option>' for n in range(1, 11))}
-                    </select>
-                </div>
-            </div>
         </section>
 
         <div class="pie-formulario">
@@ -250,13 +195,12 @@ def _pantalla_inicio(error, e):
 
 def _dialogo_guia():
     pasos = [
-        "Elige Por link o Por archivo para suministrar la matriz.",
+        "Selecciona el archivo XLSX o CSV de la matriz.",
         "Sube el ZIP con los recursos correspondientes.",
         "Selecciona los tipos de actividades y el formato (H5P o HTML).",
         "Analiza, revisa y luego inicia el cargue.",
     ]
     consejos = [
-        "En modo link, la matriz debe conservar los enlaces de Google Drive. En modo archivo no necesitas Google.",
         "El ZIP debe contener los H5P (o los HTML) y PDF correspondientes, con el mismo nombre de cada actividad.",
         "Revisa el análisis antes de iniciar el cargue.",
     ]
@@ -283,6 +227,100 @@ _CARGADOR = """
 """
 
 
+def _preparation_block(preparacion):
+    """Panel de revisión con lo que se preparará en la ficha del curso.
+
+    Muestra syllabus, videos de intro/cierre detectados en el ZIP, si se
+    dejará vacía la descripción y los datos académicos. Si hay videos sin
+    línea académica, avisa que la preparación se omitirá.
+    """
+    if not isinstance(preparacion, dict):
+        return ""
+
+    def e(valor):
+        return html.escape(str(valor or ""))
+
+    tiene_syllabus = bool(preparacion.get("syllabus"))
+    video_intro = str(preparacion.get("video_intro") or "")
+    video_cierre = str(preparacion.get("video_cierre") or "")
+    linea = str(preparacion.get("linea_academica") or "").strip()
+    nivel = str(preparacion.get("nivel") or "").strip()
+    curso = preparacion.get("curso") or {}
+
+    if not (tiene_syllabus or video_intro or video_cierre or linea):
+        return ""
+
+    def fila(estado, texto):
+        marca = {
+            "ok": ('badge-verde', "Se cargará"),
+            "aviso": ('badge-ambar', "Aviso"),
+            "omitido": ('badge-gris', "Omitido"),
+        }.get(estado, ('badge-gris', "—"))
+        return (
+            "<tr><td><span class=\"" + marca[0] + "\">" + marca[1] + "</span></td>"
+            + "<td>" + e(texto) + "</td></tr>"
+        )
+
+    filas = ""
+
+    if linea and nivel:
+        nombre_curso = str(curso.get("asignatura") or "").strip()
+        filas += fila(
+            "ok",
+            "Datos académicos: " + (nombre_curso or linea)
+            + " · Nivel " + nivel,
+        )
+    else:
+        filas += fila(
+            "omitido",
+            "Sin línea académica y nivel: la ficha de la asignatura no se preparará.",
+        )
+
+    preparacion_activa = bool(linea and nivel)
+
+    if tiene_syllabus and preparacion_activa:
+        filas += fila("ok", "Syllabus: el PDF adjunto se subirá al campo Syllabus.")
+    elif tiene_syllabus:
+        filas += fila("aviso", "Syllabus adjunto, pero falta la línea académica: no se subirá.")
+    else:
+        filas += fila("omitido", "Syllabus: no se adjuntó ninguno.")
+
+    if preparacion_activa:
+        if video_intro:
+            filas += fila("ok", "Video de introductorio: " + video_intro + " (desde el ZIP).")
+        else:
+            filas += fila("omitido", "Video de introductorio: el ZIP no incluye uno.")
+        if video_cierre:
+            filas += fila("ok", "Video de cierre: " + video_cierre + " (desde el ZIP).")
+        else:
+            filas += fila("omitido", "Video de cierre: el ZIP no incluye uno.")
+        filas += fila("ok", "Descripción: se dejará el campo vacío.")
+    else:
+        if video_intro or video_cierre:
+            filas += fila(
+                "aviso",
+                "El ZIP trae videos de intro/cierre, pero sin línea académica no se cargan.",
+            )
+
+    aviso_extra = ""
+    if not preparacion_activa and (video_intro or video_cierre):
+        aviso_extra = (
+            '<div class="aviso ambar">' + icon("alerta-circulo")
+            + "<div><strong>Preparación omitida</strong><p>Para cargar los videos de "
+            "intro/cierre y el syllabus, vuelve a Inicio y completa la línea académica "
+            "y el nivel de pensum en la tarjeta «Syllabus y preparación».</p></div></div>"
+        )
+
+    return (
+        '<section class="panel preparacion-panel"><div class="titulo-bloque">'
+        "<h2>Preparación de la asignatura</h2>"
+        "<p>Antes de subir recursos, PRIZMA recibirá estos cambios en la ficha del curso.</p>"
+        '</div><div class="tabla-scroll"><table class="tabla"><thead><tr>'
+        "<th>Estado</th><th>Acción</th></tr></thead><tbody>"
+        + filas + "</tbody></table></div>" + aviso_extra + "</section>"
+    )
+
+
 def generar_html(
     resultado=None,
     error=None,
@@ -302,9 +340,9 @@ def generar_html(
 
     if resultado is None:
         return render_page(
-            "Inicio",
+            "Cargue PRIZMA",
             _pantalla_inicio(error, e),
-            active="inicio",
+            active="prizma",
             page_css=_CSS_INICIO,
             page_js=_js_inicio(),
             after_main=_dialogo_guia() + _CARGADOR,
@@ -336,23 +374,8 @@ def generar_html(
             except (TypeError, ValueError):
                 continue
 
-    origen_matriz = str(resultado.get("origen_matriz") or "link").strip().lower()
     nombre_matriz = str(resultado.get("nombre_matriz") or "").strip()
-    drive_info = resultado.get("drive") or {}
-
-    # Modo HTML: los .html solo vienen en el ZIP (sin validacion Drive).
     modo_html = str(resultado.get("formato_recurso") or "H5P").upper() == "HTML"
-    es_modo_archivo = (
-        origen_matriz == "archivo"
-        or str(drive_info.get("modo") or "") == "html"
-    )
-    drive_validados = int(drive_info.get("validadas_drive") or 0)
-    drive_coincidencias_zip = int(drive_info.get("coincidencias_zip") or 0)
-    advertencias_drive = list(drive_info.get("advertencias") or [])
-    recursos_drive = {
-        (str(item.get("hoja") or ""), int(item.get("fila") or 0)): item
-        for item in drive_info.get("recursos", [])
-    }
 
     for hoja in resultado["hojas"]:
 
@@ -413,29 +436,8 @@ def generar_html(
                 else "badge-h5p"
             )
 
-            recurso_drive = recursos_drive.get(
-                (str(hoja.get("hoja") or ""), int(actividad.get("fila") or 0)),
-                {},
-            )
-
-            if es_modo_archivo:
-                archivo_drive = "Se resolverá desde el ZIP"
-                tamano_drive_txt = ""
-                coincide_zip = False
-                estado_zip = "Validación segura al cargar"
-            else:
-                archivo_drive = str(
-                    recurso_drive.get("archivo")
-                    or "NO HAY ARCHIVO EN LA CARPETA"
-                )
-                tamano_drive = recurso_drive.get("tamano_drive")
-                tamano_drive_txt = (
-                    _bytes_legibles(tamano_drive)
-                    if tamano_drive is not None
-                    else ""
-                )
-                coincide_zip = bool(recurso_drive.get("coincide_zip"))
-                estado_zip = "ZIP COINCIDE" if coincide_zip else "REVISAR ZIP"
+            archivo_drive = "Se resolverá desde el ZIP"
+            estado_zip = "Se comprobará al cargar"
 
             filas_html += f"""
             <tr>
@@ -459,9 +461,8 @@ def generar_html(
                 <td><span class="badge {clase_tipo}">{e(actividad["tipo"])}</span></td>
                 <td class="celda-actividad" title="{e(archivo_drive)}">
                     <strong>{e(archivo_drive)}</strong>
-                    {('<small class="tamano-drive">' + e(tamano_drive_txt) + '</small>') if tamano_drive_txt else ''}
                 </td>
-                <td><span class="badge {'badge-verde' if coincide_zip else 'badge-gris'}">{e(estado_zip)}</span></td>
+                <td><span class="badge badge-gris">{e(estado_zip)}</span></td>
             </tr>
             """
 
@@ -487,50 +488,6 @@ def generar_html(
         """
 
     bloque_advertencias_revision = ""
-    if advertencias_drive:
-
-        conteo_aviso = {}
-        filas_aviso = ""
-
-        for item in advertencias_drive:
-            if not isinstance(item, dict):
-                item = {"tipo": "Diferencia", "detalle": str(item)}
-
-            tipo = str(item.get("tipo") or "Diferencia")
-            conteo_aviso[tipo] = conteo_aviso.get(tipo, 0) + 1
-
-            actividad_txt = str(item.get("actividad") or "")
-            fila_txt = str(item.get("fila") or "")
-
-            filas_aviso += (
-                "<tr>"
-                + '<td class="celda-fuerte">' + (e(fila_txt) or "—") + "</td>"
-                + "<td>" + (e(actividad_txt) or "<i>Todas las filas</i>") + "</td>"
-                + '<td><span class="badge ' + _CLASE_ADVERTENCIA.get(tipo, "badge-gris") + '">'
-                + e(tipo) + "</span></td>"
-                + "<td>" + e(item.get("detalle")) + "</td>"
-                + "</tr>"
-            )
-
-        resumen_tipos = " · ".join(
-            e(tipo) + ": <b>" + str(cantidad) + "</b>"
-            for tipo, cantidad in sorted(conteo_aviso.items())
-        )
-
-        bloque_advertencias_revision = (
-            '<section class="panel advertencias">'
-            '<div class="advertencias-cabecera">'
-            + icon("alerta")
-            + "<div><strong>" + str(len(advertencias_drive))
-            + " advertencia(s) en la comparación con Google Drive</strong>"
-            "<p>El análisis terminó completo. Estas alertas no detuvieron el análisis. "
-            "Las filas sin coincidencia exacta Drive/ZIP no se cargarán "
-            "automáticamente hasta corregirse.</p>"
-            '<div class="advertencias-resumen">' + resumen_tipos + "</div></div></div>"
-            '<div class="advertencias-scroll"><table class="tabla mayusculas">'
-            "<thead><tr><th>Fila</th><th>Actividad</th><th>Tipo</th><th>Detalle</th></tr></thead>"
-            "<tbody>" + filas_aviso + "</tbody></table></div></section>"
-        )
 
     bloque_error_revision = ""
     if error:
@@ -548,28 +505,13 @@ def generar_html(
             + "</p></div></div>"
         )
 
-    if es_modo_archivo:
-        resumen_origen = (
-            ("Modo archivo · " if origen_matriz == "archivo" else "Google Sheets · ")
-            + e(nombre_matriz or ("Matriz local" if origen_matriz == "archivo" else "Google Sheets"))
-            + " · " + str(int((resultado.get("zip") or {}).get("total") or 0))
-            + " recurso(s) " + ("HTML" if modo_html else "H5P") + "/PDF detectado(s) en el ZIP"
-            + (
-                " · formato HTML: sin validación contra Drive"
-                if modo_html and origen_matriz != "archivo"
-                else ""
-            )
-        )
-        encabezado_recurso = "Resolución de recurso"
-        encabezado_estado = "Estado"
-    else:
-        resumen_origen = (
-            str(total_actividades) + " actividades analizadas · "
-            + str(drive_validados) + " archivo(s) encontrado(s) en Drive · "
-            + str(drive_coincidencias_zip) + " coincidencia(s) exacta(s) con el ZIP"
-        )
-        encabezado_recurso = "Archivo Drive"
-        encabezado_estado = "Estado ZIP"
+    resumen_origen = (
+        e(nombre_matriz or "Matriz local") + " · "
+        + str(int((resultado.get("zip") or {}).get("total") or 0))
+        + " recurso(s) " + ("HTML" if modo_html else "H5P") + "/PDF detectado(s) en el ZIP"
+    )
+    encabezado_recurso = "Resolución de recurso"
+    encabezado_estado = "Estado"
 
     bloque_test_html = ""
     test_info = resultado.get("test_info")
@@ -588,6 +530,49 @@ def generar_html(
             <a href="/tests/{test_job_id}/revision" class="boton naranja">Revisar y configurar test {icon("flecha-derecha")}</a>
         </section>
         """
+
+    bloque_preparacion = _preparation_block(resultado.get("preparacion"))
+
+    bloque_revision_h5p = ""
+    revision_h5p = resultado.get("revision_h5p") or {}
+    if revision_h5p:
+        if not revision_h5p.get("ok"):
+            bloque_revision_h5p = (
+                '<section class="panel aviso ambar"><div><strong>No se pudo previsualizar '
+                'el título H5P</strong><p>' + e(revision_h5p.get("error"))
+                + " El análisis y el cargue pueden continuar.</p></div></section>"
+            )
+        else:
+            filas_h5p = ""
+            estados_h5p = {"ok": ("badge-verde", "Coincide"), "alerta": ("badge-ambar", "Revisar"),
+                           "faltante": ("badge-rojo", "Falta"), "fuera-de-alcance": ("badge-gris", "No aplica")}
+            for item in revision_h5p.get("resultados") or []:
+                estado_clase, estado_texto = estados_h5p.get(str(item.get("estado") or ""), ("badge-gris", "Revisar"))
+                titulos_contenido = " · ".join(str(t) for t in item.get("titulos_contenido") or [])
+                filas_h5p += (
+                    "<tr><td>" + e(item.get("fila")) + "</td>"
+                    + "<td><strong>" + e(item.get("nombre")) + "</strong></td>"
+                    + "<td>" + e(item.get("archivo")) + "</td>"
+                    + "<td>" + (e(item.get("titulo_h5p")) or "<span class=\"muted\">Sin título interno</span>") + "</td>"
+                    + "<td>" + (e(titulos_contenido) or "—") + "</td>"
+                    + '<td><span class="badge ' + estado_clase + '">' + estado_texto + "</span><small class=\"detalle-h5p\">"
+                    + e(item.get("detalle")) + "</small></td></tr>"
+                )
+            if filas_h5p:
+                bloque_revision_h5p = (
+                    '<section class="panel revision-h5p"><div class="titulo-bloque">'
+                    '<h2>Previsualización y títulos H5P</h2>'
+                    '<p>Compara el título de la matriz, el archivo del ZIP, el título del paquete y los títulos visibles dentro del contenido.</p>'
+                    '</div><div class="tabla-scroll"><table class="tabla"><thead><tr>'
+                    '<th>Fila</th><th>Matriz</th><th>Archivo del ZIP</th><th>Título del paquete</th>'
+                    '<th>Títulos internos visibles</th><th>Resultado</th></tr></thead><tbody>'
+                    + filas_h5p + "</tbody></table></div></section>"
+                )
+            else:
+                bloque_revision_h5p = (
+                    '<section class="panel aviso info"><div><strong>No hay paquetes H5P para comparar</strong>'
+                    '<p>Esta matriz y el ZIP no contienen actividades H5P seleccionadas.</p></div></section>'
+                )
 
     contenido = f"""
     <div class="revision">
@@ -609,6 +594,8 @@ def generar_html(
     </section>
 
     {bloque_test_html}
+    {bloque_preparacion}
+    {bloque_revision_h5p}
     {bloque_advertencias_revision}
     {bloque_error_revision}
     {bloque_aviso_revision}
@@ -712,14 +699,14 @@ def generar_html(
         </div>
     </section>
 
-    <a class="boton neutro volver-inicio" href="/">{icon("flecha-izquierda")} Cambiar matriz o ZIP</a>
+    <a class="boton neutro volver-inicio" href="/prizma">{icon("flecha-izquierda")} Cambiar matriz o ZIP</a>
     </div>
     """
 
     return render_page(
         "Revisión del análisis",
         contenido,
-        active="inicio",
+        active="prizma",
         page_css=_CSS_INICIO,
         page_js=_js_inicio(),
         after_main=_CARGADOR,
@@ -736,8 +723,12 @@ _CSS_INICIO = r"""
   display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap;
   gap: 20px 28px; padding: 28px 32px; margin-bottom: 24px;
 }
+.saludo-bloque { display: flex; align-items: center; gap: 16px; min-width: 0; }
 .saludo h1 { margin: 0; font-size: 32px; font-weight: 800; letter-spacing: -.01em; }
 .saludo p { margin: 8px 0 0; color: var(--muted); font-size: 16px; }
+.saludo-acento { color: var(--acento-texto); background-image: linear-gradient(105deg,var(--acento-texto) 12%,var(--azul) 48%,var(--acento-texto) 84%); background-size: 220% 100%; background-position: 0 50%; -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent; animation: saludo-color 6s ease-in-out infinite alternate; }
+@keyframes saludo-color { to { background-position: 100% 50%; } }
+@media(prefers-reduced-motion:reduce) { .saludo-acento { animation: none; background-position: 0 50%; } }
 .alerta-error { margin-bottom: 20px; }
 
 .panel-principal { padding: 26px; display: grid; gap: 24px; }
@@ -767,7 +758,7 @@ _CSS_INICIO = r"""
 .opciones-modo.compacto .opcion-texto small { font-size: 13px; }
 .opciones-modo.compacto .icono-opcion { width: 24px; height: 24px; }
 
-.grid-archivos { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; align-items: stretch; }
+.grid-archivos { display: grid; grid-template-columns: repeat(3, 1fr); gap: 24px; align-items: stretch; }
 .tarjeta-archivo {
   display: grid; gap: 20px; min-width: 0; align-content: start;
   padding: 26px; border: 1px solid var(--borde); border-radius: 16px; background: var(--panel);
@@ -791,7 +782,7 @@ _CSS_INICIO = r"""
 .dropzone strong { font-size: 16px; color: var(--texto); }
 .dropzone small { font-size: 14px; color: var(--muted); }
 .dropzone .boton { margin-top: 10px; padding: 12px 30px; }
-.boton.naranja { background: #d97706; }
+.boton.naranja { background: var(--boton); }
 
 .archivo-listo {
   display: flex; align-items: center; gap: 14px; min-width: 0;
@@ -804,9 +795,18 @@ _CSS_INICIO = r"""
 }
 .archivo-listo-texto small { display: block; margin-top: 2px; font-size: 13.5px; color: var(--muted); }
 .icono-listo { width: 28px; height: 28px; }
-.icono-listo circle { fill: #12b76a; stroke: #12b76a; }
-.icono-listo path { stroke: #ffffff; stroke-width: 2.4; }
+.icono-listo circle { fill: var(--verde); stroke: var(--verde); }
+.icono-listo path { stroke: var(--boton-texto); stroke-width: 2.4; }
 .archivo-listo .boton-icono { border-left: 1px solid var(--borde); border-radius: 0 10px 10px 0; }
+
+.campos-preparacion { display: grid; gap: 12px; }
+.campos-preparacion label { display: grid; gap: 6px; font-size: 14px; font-weight: 700; color: var(--texto); }
+.campos-preparacion input[type="text"] {
+  padding: 11px 13px; border: 1px solid var(--borde); border-radius: 12px;
+  background: var(--panel-2); color: var(--texto); font-size: 14.5px; font-family: inherit;
+}
+.campos-preparacion input[type="text"]:focus { outline: 2px solid var(--acento); outline-offset: 1px; }
+.campos-preparacion .nota-campos { font-size: 12.5px; font-weight: 400; color: var(--muted); line-height: 1.5; }
 
 .separador { height: 1px; background: var(--borde); }
 .seccion-tipos { display: grid; gap: 18px; }
@@ -825,25 +825,16 @@ _CSS_INICIO = r"""
 .tarjeta-tipo:has(input:focus-visible) { outline: 3px solid var(--foco); outline-offset: 2px; }
 .check-personalizado {
   position: absolute; top: 14px; right: 14px; width: 24px; height: 24px;
-  border-radius: 7px; display: grid; place-items: center; background: var(--borde-2); color: #fff;
+  border-radius: 7px; display: grid; place-items: center; background: var(--borde-2); color: var(--boton-texto);
 }
 .check-personalizado .icono { width: 15px; height: 15px; stroke-width: 2.8; }
 .tipo-icono { width: 44px; height: 44px; border-radius: 12px; display: grid; place-items: center; margin-bottom: 14px; }
 .tipo-icono .icono { width: 24px; height: 24px; }
 .tarjeta-tipo strong { font-size: 16px; color: var(--texto); }
 .tarjeta-tipo small { margin-top: 5px; color: var(--muted); font-size: 13px; line-height: 1.4; }
-.tipo-verde .tipo-icono { background: var(--verde-suave); color: var(--verde); }
-.tipo-azul .tipo-icono { background: var(--azul-suave); color: var(--azul); }
-.tipo-morado .tipo-icono { background: var(--morado-suave); color: var(--morado); }
-.tipo-naranja .tipo-icono { background: var(--naranja-suave); color: var(--naranja); }
-.tipo-verde:has(input:checked) { border-color: #47cd89; }
-.tipo-verde:has(input:checked) .check-personalizado { background: #12b76a; }
-.tipo-azul:has(input:checked) { border-color: #84caff; }
-.tipo-azul:has(input:checked) .check-personalizado { background: #1570ef; }
-.tipo-morado:has(input:checked) { border-color: #bdb4fe; }
-.tipo-morado:has(input:checked) .check-personalizado { background: #7a5af8; }
-.tipo-naranja:has(input:checked) { border-color: #fdb022; }
-.tipo-naranja:has(input:checked) .check-personalizado { background: #f79009; }
+.tipo-verde .tipo-icono, .tipo-azul .tipo-icono, .tipo-morado .tipo-icono, .tipo-naranja .tipo-icono { background: var(--acento-suave); color: var(--acento-texto); }
+.tarjeta-tipo:has(input:checked) { border-color: var(--acento); background: var(--acento-suave); }
+.tarjeta-tipo:has(input:checked) .check-personalizado { background: var(--boton); }
 
 .formato-recurso { display: grid; gap: 12px; }
 .formato-titulo { margin: 0; font-size: 14px; color: var(--muted); }
@@ -851,12 +842,12 @@ _CSS_INICIO = r"""
 
 #bloque-test { display: grid; gap: 18px; }
 #bloque-test[hidden] { display: none; }
-#bloque-test .opcion-modo:has(input:checked) { border-color: #f79009; background: var(--naranja-suave); }
-#bloque-test .opcion-modo:has(input:checked) .radio { border-color: #f79009; }
-#bloque-test .opcion-modo:has(input:checked) .radio::after { background: #f79009; }
-#bloque-test .opcion-modo .icono-opcion { color: var(--naranja); }
-#bloque-test .dropzone { border-color: #fdb022; }
-#bloque-test .dropzone .icono-drop { color: var(--naranja); }
+#bloque-test .opcion-modo:has(input:checked) { border-color: var(--acento); background: var(--acento-suave); }
+#bloque-test .opcion-modo:has(input:checked) .radio { border-color: var(--acento); }
+#bloque-test .opcion-modo:has(input:checked) .radio::after { background: var(--acento); }
+#bloque-test .opcion-modo .icono-opcion { color: var(--acento-texto); }
+#bloque-test .dropzone { border-color: var(--acento-borde); }
+#bloque-test .dropzone .icono-drop { color: var(--acento-texto); }
 #bloque-test .tarjeta-archivo { padding: 18px; }
 .caja-datos {
   display: grid; gap: 16px; padding: 18px;
@@ -911,10 +902,15 @@ _CSS_INICIO = r"""
 .resumen-card.morado strong, .resumen-card.violeta strong { color: var(--morado); }
 .resumen-card.rojo strong { color: var(--rojo); }
 
-.test-preparado { display: flex; align-items: center; gap: 16px; flex-wrap: wrap; padding: 20px 22px; border-color: #fdb022; }
+.test-preparado { display: flex; align-items: center; gap: 16px; flex-wrap: wrap; padding: 20px 22px; border-color: var(--ambar-borde); }
 .test-preparado-texto { flex: 1; min-width: 220px; }
 .test-preparado h3 { margin: 0 0 4px; font-size: 18px; color: var(--naranja); }
 .test-preparado p { margin: 0; color: var(--texto-2); font-size: 14px; }
+.revision-h5p { padding: 20px; }
+.revision-h5p .tabla-scroll { max-height: 420px; overflow: auto; margin-top: 14px; }
+.revision-h5p td { vertical-align: top; min-width: 110px; }
+.revision-h5p td:last-child { min-width: 240px; }
+.detalle-h5p { display: block; margin-top: 5px; color: var(--muted); white-space: normal; }
 
 .advertencias { overflow: hidden; border-color: var(--ambar-borde); }
 .advertencias-cabecera {
@@ -945,7 +941,7 @@ _CSS_INICIO = r"""
 .filtro-recurso-item:has(input:focus-visible) { outline: 3px solid var(--foco); outline-offset: 2px; }
 .filtro-recurso-check {
   width: 22px; height: 22px; flex: none; border-radius: 6px; display: grid; place-items: center;
-  background: var(--borde-2); color: #fff;
+  background: var(--borde-2); color: var(--boton-texto);
 }
 .filtro-recurso-check .icono { width: 14px; height: 14px; stroke-width: 2.8; }
 .filtro-recurso-item:has(input:checked) { border-color: var(--acento); background: var(--acento-suave); }
@@ -984,6 +980,7 @@ _CSS_INICIO = r"""
 .volver-inicio { justify-self: start; }
 
 @media (max-width: 1200px) {
+  .grid-archivos { grid-template-columns: 1fr 1fr; }
   .grid-tipos { grid-template-columns: repeat(2, 1fr); }
   .resumen-grid { grid-template-columns: repeat(3, 1fr); }
   .revision-grid { grid-template-columns: 1fr; }
@@ -1016,22 +1013,13 @@ _CSS_INICIO = r"""
 # ============================================================
 
 def _js_inicio():
-    iconos = json.dumps({
-        "ok": icon("check-circulo"),
-        "error": icon("alerta-circulo"),
-        "cargando": icon("girar", "icono girando"),
-    })
-    return "var ICONOS_ENLACE = " + iconos + ";\n" + _JS_INICIO
+    return _JS_INICIO
 
 
 _JS_INICIO = r"""
 (function () {
   var matriz = document.getElementById('archivo-matriz');
   var zip = document.getElementById('archivo-zip');
-  var googleUrl = document.getElementById('google-sheet-url');
-  var bloqueLink = document.getElementById('bloque-matriz-link');
-  var bloqueArchivo = document.getElementById('bloque-matriz-archivo');
-  var radiosModo = document.querySelectorAll('input[name="modo_matriz"]');
   var loader = document.getElementById('prizma-loader');
   var loaderTexto = document.getElementById('prizma-loader-texto');
 
@@ -1175,114 +1163,26 @@ _JS_INICIO = r"""
     });
   });
 
-  // ---------- Enlace de Google Sheets ----------
-  var estadoEnlace = document.getElementById('estado-enlace');
-  var estadoInicial = estadoEnlace ? {
-    html: estadoEnlace.innerHTML, clase: estadoEnlace.className, oculto: estadoEnlace.hidden
-  } : null;
-  var temporizadorEnlace = null;
-  var ultimaConsulta = '';
-
-  function pintarEnlace(tipo, titulo, detalle, conectar) {
-    if (!estadoEnlace) return;
-    if (!tipo) {
-      estadoEnlace.innerHTML = estadoInicial.html;
-      estadoEnlace.className = estadoInicial.clase;
-      estadoEnlace.hidden = estadoInicial.oculto;
-      return;
-    }
-    estadoEnlace.className = 'aviso' + (tipo === 'ok' ? ' ok' : tipo === 'error' ? ' error' : '');
-    estadoEnlace.innerHTML = ICONOS_ENLACE[tipo] + '<div><strong></strong><p></p>'
-      + (conectar ? '<a class="boton chico" href="/google/conectar">Conectar con Google</a>' : '') + '</div>';
-    estadoEnlace.querySelector('strong').textContent = titulo;
-    estadoEnlace.querySelector('p').textContent = detalle || '';
-    estadoEnlace.hidden = false;
-  }
-
-  function validarEnlace() {
-    if (!googleUrl || googleUrl.disabled) return;
-    var url = (googleUrl.value || '').trim();
-    if (!url) { ultimaConsulta = ''; pintarEnlace(null); return; }
-    if (url === ultimaConsulta) return;
-    ultimaConsulta = url;
-    pintarEnlace('cargando', 'Comprobando enlace...', 'Consultando la hoja con tu cuenta de Google.');
-    fetch('/google/validar-matriz?url=' + encodeURIComponent(url), {
-      headers: { 'Accept': 'application/json' }, credentials: 'same-origin'
-    })
-      .then(function (respuesta) {
-        if (!respuesta.ok) throw new Error('HTTP ' + respuesta.status);
-        return respuesta.json();
-      })
-      .then(function (datos) {
-        if ((googleUrl.value || '').trim() !== url) return;
-        if (datos.ok) {
-          pintarEnlace('ok', 'Enlace válido', '«' + datos.documento + '» · pestaña «' + datos.pestana
-            + '». La hoja es accesible y está lista para procesar.');
-        } else {
-          pintarEnlace('error', 'Revisa el enlace', datos.motivo, datos.conectar);
-        }
-      })
-      .catch(function () {
-        if ((googleUrl.value || '').trim() !== url) return;
-        ultimaConsulta = '';
-        pintarEnlace('error', 'No se pudo comprobar el enlace', 'Puedes analizar igualmente: el análisis lo vuelve a revisar.');
-      });
-  }
-
-  if (googleUrl) {
-    googleUrl.addEventListener('input', function () {
-      clearTimeout(temporizadorEnlace);
-      temporizadorEnlace = setTimeout(validarEnlace, 700);
-    });
-    googleUrl.addEventListener('change', validarEnlace);
-  }
-
-  // ---------- Modo de la matriz y Test Evaluativo ----------
+  // ---------- Test Evaluativo ----------
   var chkTest = document.getElementById('chk-test');
   var bloqueTest = document.getElementById('bloque-test');
   var testDocx = document.getElementById('archivo-test-docx');
-  var testUrl = document.getElementById('test-google-doc-url');
   var testDatos = document.getElementById('test-datos-academicos');
-  var testSemestre = document.getElementById('test-semestre');
-  var radiosTest = document.querySelectorAll('input[name="modo_test"]');
 
   function ajustarRequeridosGenerales() {
     var chkOvi = document.querySelector('input[name="ovi"]');
     var chkOva = document.querySelector('input[name="ova"]');
     var chkRetos = document.querySelector('input[name="retos"]');
     var tieneRecursos = (chkOvi && chkOvi.checked) || (chkOva && chkOva.checked) || (chkRetos && chkRetos.checked);
-    var selModo = document.querySelector('input[name="modo_matriz"]:checked');
-    var esArchivo = selModo ? selModo.value === 'archivo' : false;
     if (zip) zip.required = !!tieneRecursos;
-    if (googleUrl) googleUrl.required = !!tieneRecursos && !esArchivo;
-    if (matriz) matriz.required = !!tieneRecursos && esArchivo;
-  }
-
-  function aplicarModoMatriz() {
-    var seleccionado = document.querySelector('input[name="modo_matriz"]:checked');
-    var esArchivo = !!seleccionado && seleccionado.value === 'archivo';
-    if (bloqueLink) bloqueLink.hidden = esArchivo;
-    if (bloqueArchivo) bloqueArchivo.hidden = !esArchivo;
-    if (googleUrl) googleUrl.disabled = esArchivo;
-    if (matriz) matriz.disabled = !esArchivo;
-    ajustarRequeridosGenerales();
+    if (matriz) matriz.required = !!tieneRecursos;
   }
 
   function aplicarModoTest() {
-    var sel = document.querySelector('input[name="modo_test"]:checked');
-    var esArchivo = !sel || sel.value === 'archivo';
-    var bloqueTestArchivo = document.getElementById('bloque-test-archivo');
-    var bloqueTestLink = document.getElementById('bloque-test-link');
     var activo = !!chkTest && chkTest.checked;
-    if (bloqueTestArchivo) bloqueTestArchivo.hidden = !esArchivo;
-    if (bloqueTestLink) bloqueTestLink.hidden = esArchivo;
     if (testDocx) {
-      testDocx.disabled = !activo || !esArchivo;
-      testDocx.required = activo && esArchivo;
-    }
-    if (testUrl) {
-      testUrl.disabled = !activo || esArchivo;
-      testUrl.required = activo && !esArchivo;
+      testDocx.disabled = !activo;
+      testDocx.required = activo;
     }
   }
 
@@ -1293,22 +1193,15 @@ _JS_INICIO = r"""
       testDatos.disabled = !activo;
       testDatos.required = activo;
     }
-    if (testSemestre) {
-      testSemestre.disabled = !activo;
-      testSemestre.required = activo;
-    }
     aplicarModoTest();
     ajustarRequeridosGenerales();
   }
 
-  radiosModo.forEach(function (radio) { radio.addEventListener('change', aplicarModoMatriz); });
   if (chkTest) chkTest.addEventListener('change', toggleTest);
-  radiosTest.forEach(function (radio) { radio.addEventListener('change', aplicarModoTest); });
   document.querySelectorAll('input[name="ovi"], input[name="ova"], input[name="retos"]').forEach(function (casilla) {
     casilla.addEventListener('change', ajustarRequeridosGenerales);
   });
 
-  if (bloqueLink) aplicarModoMatriz();
   if (chkTest) toggleTest();
 })();
 """

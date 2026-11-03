@@ -2,6 +2,7 @@
 
 import csv
 import json
+from datetime import datetime
 
 import pytest
 from fastapi.testclient import TestClient
@@ -35,6 +36,10 @@ REGISTROS = [
 def client(monkeypatch, tmp_path):
     monkeypatch.setattr(history, "HISTORIAL_PATH", str(tmp_path / "historial.json"))
     monkeypatch.setattr(history, "RESULTADOS_DIR", str(tmp_path))
+    monkeypatch.setattr(
+        history, "_ahora_colombia",
+        lambda: datetime.fromisoformat("2026-09-25T12:00:00-05:00"),
+    )
 
     registros = []
     for registro_id, fecha, cursos, usuario in REGISTROS:

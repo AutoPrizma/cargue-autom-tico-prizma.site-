@@ -15,8 +15,9 @@ MENSAJES_ERROR = {
     "ERROR_LOGIN_PRIZMA": (
         "PRIZMA no aceptó el usuario o la contraseña. Revisa las credenciales."
     ),
-    "ERROR_GOOGLE_NO_CONECTADO": (
-        "Google no está conectado. Conecta Google para usar recursos de Drive."
+    "ERROR_CONECTANDO_PRIZMA": (
+        "No fue posible conectar con PRIZMA para iniciar sesión. Revisa la "
+        "conexión o que PRIZMA esté disponible."
     ),
     # --- Curso / actividad ---
     "ERROR_CURSO_SIN_PLANTILLA": (
@@ -88,54 +89,25 @@ MENSAJES_ERROR = {
     "ERROR_TIPO_RECURSO_NO_SOPORTADO": (
         "El tipo de recurso de la fila no está soportado."
     ),
-    # --- Recurso / archivo / Drive ---
+    # --- Recurso / archivo ---
     "ERROR_RECURSO_NO_ENCONTRADO": (
         "La fila no tiene recurso: la columna Recurso del Excel está vacía o "
         "no coincide con ningún archivo."
     ),
     "ERROR_RECURSO_NO_VISIBLE": (
-        "El recurso no se pudo subir a Google Drive (no quedó visible)."
+        "El recurso no quedó visible después de guardarlo en PRIZMA."
     ),
     "ERROR_RECURSO_DUPLICADO": (
-        "El recurso aparece más de una vez en el ZIP o en Drive."
+        "El recurso aparece más de una vez en el ZIP."
     ),
     "ERROR_RECURSO_AMBIGUO": (
         "Hay varios archivos que pueden ser el recurso y no se sabe cuál usar."
     ),
-    "ERROR_RECURSO_AMBIGUO_EN_CARPETA_DRIVE": (
-        "La carpeta de Drive del recurso tiene varios archivos y no se sabe "
-        "cuál usar."
-    ),
     "ERROR_RECURSO_NO_COINCIDE_CON_ACTIVIDAD": (
         "El nombre del recurso no coincide con la actividad de la matriz."
     ),
-    "ERROR_RECURSO_DRIVE_NO_ESTA_EN_ZIP": (
-        "El enlace de Drive apunta a un archivo que no está en el ZIP."
-    ),
     "ERROR_RECURSO_ZIP_TAMANO_CAMBIO": (
         "El tamaño del recurso cambió entre la revisión y el cargue."
-    ),
-    "ERROR_DRIVE_ZIP_NO_COINCIDEN": (
-        "Los archivos de Google Drive y los del ZIP no coinciden entre sí."
-    ),
-    "ERROR_SIN_ENLACE_DRIVE": (
-        "La fila no tiene enlace de Google Drive."
-    ),
-    "ERROR_ENLACE_DRIVE_INVALIDO": (
-        "El enlace de Google Drive de la fila no es válido."
-    ),
-    "ERROR_CARPETA_RECURSO_NO_ACCESIBLE": (
-        "La carpeta del recurso en Drive no se pudo abrir."
-    ),
-    "ERROR_CARPETA_RECURSO_VACIA": (
-        "La carpeta del recurso en Drive está vacía."
-    ),
-    "ERROR_SIN_ARCHIVO_EN_CARPETA": (
-        "La carpeta del recurso en Drive no contiene ningún archivo."
-    ),
-    "ERROR_VARIOS_ARCHIVOS_EN_CARPETA": (
-        "La carpeta del recurso en Drive contiene varios archivos y no se sabe "
-        "cuál usar."
     ),
     "ERROR_EXTRAYENDO_RECURSO": (
         "No se pudo extraer el recurso del ZIP."
@@ -169,6 +141,20 @@ MENSAJES_ERROR = {
     "ERROR_DESCONOCIDO": (
         "Falló por una razón no identificada. Revisa el reporte o el log."
     ),
+    "ERROR_CANCELADO": (
+        "El proceso fue cancelado por el usuario."
+    ),
+    "ERROR_ARCHIVO_RECURSO_NO_VALIDO": (
+        "El archivo elegido como recurso no se pudo leer desde el disco; "
+        "vuelve a elegirlo."
+    ),
+    "ERROR_PROCESANDO_ACTIVIDAD": (
+        "Ocurrió un error inesperado al procesar la actividad en PRIZMA."
+    ),
+    "ERROR_NO_ESTA_EN_PRIZMA": (
+        "La verificación en PRIZMA no encontró la actividad: no está en el "
+        "curso."
+    ),
 }
 
 
@@ -199,12 +185,23 @@ def extraer_codigo_error(texto):
 def mensaje_error(codigo_o_texto):
     """Devuelve la frase humana para un codigo (o texto con codigo).
 
-    Si no hay traduccion, devuelve el texto original sin tocar.
+    Si el motor anexo un detalle ("codigo: lo que paso"), la frase se
+    completa con ese detalle: el usuario ve que archivo pide el Excel o
+    donde esta la actividad repetida, no solo el codigo. Si no hay
+    traduccion, devuelve el texto original sin tocar.
     """
-    codigo = extraer_codigo_error(codigo_o_texto)
-    if codigo:
-        return MENSAJES_ERROR[codigo]
-    return str(codigo_o_texto or "")
+    texto = str(codigo_o_texto or "")
+    codigo = extraer_codigo_error(texto)
+    if not codigo:
+        return texto
+    base = MENSAJES_ERROR[codigo]
+    detalle = ""
+    posicion = texto.find(codigo)
+    if posicion >= 0:
+        detalle = texto[posicion + len(codigo):].lstrip(" \t:|-").strip()
+    if not detalle:
+        return base
+    return f"{base} Detalle: {detalle}"
 
 
 def es_codigo_error(texto):

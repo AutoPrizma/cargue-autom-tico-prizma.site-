@@ -5,11 +5,7 @@ Fijan el comportamiento ACTUAL de las partes del motor que no tocan PRIZMA
 recursos, reporte CSV y reglas de Retos) para que la futura division de
 auto_prizma/automation/prizma/engine.py no cambie nada sin que se note.
 
-Importante: al importar main, engine_overrides reemplaza en el modulo engine
-leer_actividades_excel y resolver_recurso. Aqui se prueban las funciones
-ORIGINALES, que engine_overrides conserva como _LEER_ACTIVIDADES_EXCEL_ORIGINAL
-y _RESOLVER_RECURSO_ORIGINAL. Si se elimina el monkeypatching, apuntar estas
-pruebas a las funciones del motor directamente.
+Se prueban las funciones del motor directamente.
 """
 
 import csv
@@ -20,12 +16,11 @@ import pytest
 from openpyxl import Workbook
 
 from auto_prizma.automation.prizma import engine
-from auto_prizma.automation.prizma import engine_overrides
 
-leer_actividades_excel = engine_overrides._LEER_ACTIVIDADES_EXCEL_ORIGINAL
-resolver_recurso = engine_overrides._RESOLVER_RECURSO_ORIGINAL
+DRIVE_URL_IGNORADO = "https://drive.google.com/drive/folders/ABC123"
+leer_actividades_excel = engine.leer_actividades_excel
+resolver_recurso = engine.resolver_recurso
 
-DRIVE_URL = "https://drive.google.com/drive/folders/ABC123"
 
 
 # ============================================================
@@ -59,7 +54,7 @@ def ruta_matriz(tmp_path):
             if valor is not None:
                 hoja.cell(row=numero_fila, column=columna, value=valor)
 
-    hoja.cell(row=5, column=7).hyperlink = DRIVE_URL
+    hoja.cell(row=5, column=7).hyperlink = DRIVE_URL_IGNORADO
     libro.create_sheet("Notas")["A1"] = "sin cabecera"
 
     ruta = tmp_path / "matriz.xlsx"
@@ -100,11 +95,10 @@ def test_leer_actividades_excel_extracts_only_supported_rows(ruta_matriz):
         (6, "Lectura guía", "OVI", "PDF"),
         (8, "Actividad interactiva", "OVA", "H5P"),
         (9, "Reto 1", "CHALLENGE", "PDF"),
-        (13, "Recurso por enlace", "OVI", "PDF"),
     ]
 
 
-def test_leer_actividades_excel_fills_course_metadata_and_hyperlink(ruta_matriz):
+def test_leer_actividades_excel_fills_course_metadata_without_external_links(ruta_matriz):
     primera = leer_actividades_excel(ruta_matriz)[0]
 
     assert primera == {
@@ -118,8 +112,7 @@ def test_leer_actividades_excel_fills_course_metadata_and_hyperlink(ruta_matriz)
         "categoria_prizma": "OVI",
         "tipo_recurso": "Infografía",
         "tipo_archivo": "H5P",
-        "enlace": "carpeta",
-        "url_recurso": DRIVE_URL,
+        "enlace": "",
     }
 
 
@@ -134,10 +127,9 @@ def test_leer_actividades_excel_respects_category_flags(ruta_matriz):
     assert [a["nombre"] for a in solo_ova] == ["Actividad interactiva"]
 
 
-def test_main_replaces_leer_actividades_excel_with_target_sheet_filter():
-    # Documenta el acople: tras importar main, el motor usa el override.
-    assert engine.leer_actividades_excel is not leer_actividades_excel
-    assert engine.resolver_recurso is not resolver_recurso
+def test_motor_usa_lectura_y_resolucion_locales():
+    assert engine.leer_actividades_excel is leer_actividades_excel
+    assert engine.resolver_recurso is resolver_recurso
 
 
 # ============================================================
@@ -226,7 +218,6 @@ def _resolver(actividad, ruta_zip, ruta_matriz, tmp_path, nombre_drive=None):
     [
         ("Infografía de costos", None, "Infografia_de_costos.h5p", 580, b"h5p"),
         ("Lectura guía", None, "Lectura guía.pdf", 580, b"%PDF"),
-        ("Lectura guía", "Lectura guía.pdf", "Lectura guía.pdf", 10000, b"%PDF"),
     ],
 )
 def test_resolver_recurso_finds_and_extracts_file(
@@ -248,8 +239,6 @@ def test_resolver_recurso_finds_and_extracts_file(
 @pytest.mark.parametrize(
     ("actividad", "cambios", "nombre_drive", "error_esperado"),
     [
-        ("Lectura guía", {}, "No existe.pdf", "ERROR_RECURSO_DRIVE_NO_ESTA_EN_ZIP"),
-        ("Lectura guía", {}, "Copia.pdf", "ERROR_RECURSO_DUPLICADO"),
         ("Actividad interactiva", {}, None, "ERROR_RECURSO_NO_ENCONTRADO"),
         ("Reto 1", {"tipo_archivo": "DOCX"}, None, "ERROR_TIPO_RECURSO_NO_SOPORTADO"),
     ],
@@ -344,3 +333,90 @@ def test_obtener_configuracion_reto():
 )
 def test_es_error_estructural_prizma(error, esperado):
     assert engine._es_error_estructural_prizma(error) is esperado
+
+
+# ============================================================
+# EMPAREJAR ARCHIVOS: COPIAS DE DRIVE (1) Y NOMBRES TRUNCADOS
+# ============================================================
+
+def test_limpia_sufijo_copia_de_drive():
+    # Regresion: el " (1)" que Drive pone a las copias rompia la
+    # comparacion y las filas 24 y 46 fallaron con ERROR_RECURSO_NO_ENCONTRADO
+    # aunque el archivo estaba en el ZIP.
+    assert (
+        engine.limpiar_prefijo_tecnico_recurso(
+            "ID003-Tema_4-Secuencia_para_construir_el_problema_de_investigac (1).h5p"
+        )
+        == "secuencia para construir el problema de investigac"
+    )
+
+
+def test_prefijo_de_actividad_acepta_copia_de_drive():
+    actividad = {
+        "nombre": "Secuencia para construir el problema de investigación",
+        "tipo_archivo": "H5P",
+    }
+    assert engine.recurso_es_prefijo_de_actividad(
+        "ID003-Tema_4-Secuencia_para_construir_el_problema_de_investigac (1).h5p",
+        actividad,
+    )
+
+
+def test_puntuar_recurso_supera_el_umbral_con_copia_y_truncamiento():
+    actividad = {
+        "nombre": "Secuencia para construir el problema de investigación",
+        "enlace": "",
+    }
+    puntaje = engine.puntuar_recurso(
+        "ID003-Tema_4-Secuencia_para_construir_el_problema_de_investigac (1).h5p",
+        actividad,
+    )
+    assert puntaje >= 100
+
+
+def test_los_dos_secuencia_no_se_confunden_entre_si():
+    # Filas 24 y 46 de la matriz real: cada archivo debe identificar solo
+    # a SU actividad (unico) y no cruzarse con la otra.
+    archivo_24 = "ID003-Tema_4-Secuencia_para_construir_el_problema_de_investigac (1).h5p"
+    archivo_46 = "ID003-Tema_4-Secuencia_metodologica_para_definir_muestra_y_sele (1).h5p"
+    actividad_24 = {
+        "nombre": "Secuencia para construir el problema de investigación",
+        "tipo_archivo": "H5P",
+        "fila_excel": "24",
+    }
+    actividad_46 = {
+        "nombre": "Secuencia metodológica para definir muestra y seleccionar participantes",
+        "tipo_archivo": "H5P",
+        "fila_excel": "46",
+    }
+    curso = [actividad_24, actividad_46]
+
+    assert engine.recurso_corto_es_unico_para_actividad(
+        archivo_24, actividad_24, curso
+    )
+    assert engine.recurso_corto_es_unico_para_actividad(
+        archivo_46, actividad_46, curso
+    )
+    assert not engine.recurso_corto_es_unico_para_actividad(
+        archivo_24, actividad_46, curso
+    )
+    assert not engine.recurso_corto_es_unico_para_actividad(
+        archivo_46, actividad_24, curso
+    )
+
+
+def test_error_duplicada_explica_donde_esta_la_repetida():
+    codigo = engine._error_duplicada([
+        {"texto": "Formulación del problema\nSemana 3\nUnidad 1"},
+        {"texto": "Formulación del problema\nSemana 8\nUnidad 2"},
+    ])
+    assert codigo.startswith("ERROR_ACTIVIDAD_DUPLICADA")
+    assert "2 veces" in codigo
+    assert "Semana 3" in codigo
+    assert "Semana 8" in codigo
+
+
+def test_error_duplicada_sin_textos_se_queda_en_codigo_puro():
+    # Sin filas que mostrar: el codigo queda exactamente igual para no
+    # romper los consumidores que lo comparan.
+    assert engine._error_duplicada([]) == "ERROR_ACTIVIDAD_DUPLICADA"

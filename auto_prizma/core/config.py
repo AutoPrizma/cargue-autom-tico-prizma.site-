@@ -1,8 +1,7 @@
 """Configuracion central de Auto Prizma Pro.
 
-Reune en un solo lugar las carpetas de trabajo y de datos, las variables de
-entorno, los parametros de sesion, los limites de Google/Drive, la cola de
-cargues, las URLs de PRIZMA y la configuracion del navegador.
+Reúne carpetas de trabajo y datos, variables de entorno, parámetros de sesión,
+cola de cargues, URLs de PRIZMA y configuración del navegador.
 
 Los modulos importan desde aqui los valores con el mismo nombre que usaban
 antes, para no cambiar su comportamiento.
@@ -22,30 +21,16 @@ from zoneinfo import ZoneInfo
 #   AUTO_PRIZMA_SECRET          clave HMAC para firmar las cookies de sesion
 #   AUTO_PRIZMA_COOKIE_SECURE   "1" fuerza la cookie Secure
 #   AUTO_PRIZMA_MAX_SIMULTANEOS limite de cargues simultaneos (1 o 2)
-#   GOOGLE_CLIENT_ID / GOOGLE_CLIENT_SECRET / GOOGLE_REDIRECT_URI
 #   AUTO_PRIZMA_URL_PRIZMA      URL de PRIZMA (vacio = produccion)
-#   AUTO_PRIZMA_SIN_LOGIN       usuario con el que se entra SIN login, solo desde
-#                               127.0.0.1 (uso local; vacio = login normal)
+#   N8N_WEBHOOK_*               URLs privadas de los webhooks n8n
+#   N8N_SHARED_SECRET           Header secreto opcional para n8n
 #
-# Las variables de Google y de la cookie se leen en CADA llamada (no al
-# importar), igual que antes de centralizarlas.
+# La variable de cookie Secure se lee en cada llamada.
 
 
 def env_str(nombre):
     """Devuelve el valor de una variable de entorno sin espacios ("" si no existe)."""
     return str(os.environ.get(nombre) or "").strip()
-
-
-def google_client_id():
-    return env_str("GOOGLE_CLIENT_ID")
-
-
-def google_client_secret():
-    return env_str("GOOGLE_CLIENT_SECRET")
-
-
-def google_redirect_uri():
-    return env_str("GOOGLE_REDIRECT_URI")
 
 
 def session_secret_from_env():
@@ -99,6 +84,9 @@ DATA_DIR = os.environ.get(
     os.path.join(BASE_DIR, "data"),
 )
 
+# Historiales, estado de cursos y reportes locales se conservan 15 días.
+LOCAL_DATA_RETENTION_DAYS = 15
+
 RESULTADOS_DIR = os.path.join(
     DATA_DIR,
     "reportes",
@@ -121,11 +109,6 @@ USUARIOS_PATH = os.path.join(
     "usuarios.json",
 )
 
-TOKENS_DIR = os.path.join(
-    DATA_DIR,
-    "tokens",
-)
-
 SECRETO_PATH = os.path.join(
     DATA_DIR,
     "secreto_sesion.txt",
@@ -137,7 +120,6 @@ for carpeta in [
     TEMP_DIR,
     DATA_DIR,
     RESULTADOS_DIR,
-    TOKENS_DIR,
 ]:
 
     os.makedirs(
@@ -158,33 +140,6 @@ PBKDF2_ITERACIONES = 240000
 # BLOQUEO_SEGUNDOS antes de volver a intentar.
 MAX_INTENTOS = 5
 BLOQUEO_SEGUNDOS = 120
-
-
-# ============================================================
-# GOOGLE (OAUTH, SHEETS Y DRIVE)
-# ============================================================
-
-# Solo lectura: la app nunca modifica archivos de Google.
-GOOGLE_SCOPES = [
-    "https://www.googleapis.com/auth/spreadsheets.readonly",
-    "https://www.googleapis.com/auth/drive.readonly",
-]
-
-GOOGLE_AUTH_URI = "https://accounts.google.com/o/oauth2/auth"
-GOOGLE_TOKEN_URI = "https://oauth2.googleapis.com/token"
-
-# Tamano maximo de la matriz exportada desde Google Sheets.
-GOOGLE_SHEETS_MAX_BYTES = 50 * 1024 * 1024
-
-# Peticiones por lote al consultar metadatos en Drive.
-DRIVE_BATCH_MAX = 100
-
-# Profundidad maxima al recorrer subcarpetas de Drive.
-DRIVE_PROFUNDIDAD_MAX = 3
-
-# Esperas (segundos) antes de reintentar las consultas de Drive que fallen
-# (errores momentaneos o limite de consultas): 2 reintentos.
-DRIVE_ESPERAS_REINTENTO = (1.5, 4.0)
 
 
 # ============================================================
@@ -243,14 +198,6 @@ def _resolver_url_prizma(valor):
     return url
 
 
-def local_login_user():
-    """Usuario para entrar sin login desde el mismo equipo (AUTO_PRIZMA_SIN_LOGIN).
-
-    Se lee en cada petición. Vacío = siempre se pide usuario y contraseña.
-    """
-    return env_str("AUTO_PRIZMA_SIN_LOGIN")
-
-
 PRIZMA_BASE_URL = _resolver_url_prizma(env_str("AUTO_PRIZMA_URL_PRIZMA"))
 URL_PRIZMA = PRIZMA_BASE_URL + "/inicio-sesion"
 PRIZMA_HOST = urlparse(PRIZMA_BASE_URL).netloc or PRIZMA_BASE_URL
@@ -307,3 +254,22 @@ EXTENSIONES_HTML = (".html", ".htm")
 # y lo deja en el reporte. False = no toca la actividad, cancela sin guardar y
 # reporta ERROR_RECURSO_Y_HTML.
 PRIZMA_VACIAR_RECURSO_CON_HTML = True
+
+
+# ============================================================
+# AUTOMATIZACIONES N8N
+# ============================================================
+
+N8N_TIMEOUT_SECONDS = 58
+N8N_WEBHOOK_DEFAULTS = {
+    "aut-tests": "https://auton8n4.americana.edu.co/webhook/generar-tests-json",
+    "descargar-recursos": "https://auton8n4.americana.edu.co/webhook/prueba-descargar-recursos-portal",
+    "matriz-csv": "https://auton8n4.americana.edu.co/webhook/matriz-csv-portal",
+    "plantillas-tematicas": "https://auton8n4.americana.edu.co/webhook/plantillas-tematicas-portal",
+}
+# Webhooks GET para consultar el avance de flujos largos (responden de inmediato
+# con un jobId y siguen trabajando en n8n).
+N8N_STATUS_WEBHOOK_DEFAULTS = {
+    "descargar-recursos": "https://auton8n4.americana.edu.co/webhook/prueba-descargar-recursos-estado",
+}
+N8N_STATUS_TIMEOUT_SECONDS = 15

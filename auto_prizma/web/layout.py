@@ -18,25 +18,70 @@ from auto_prizma.core.config import (
     PRIZMA_ES_PRODUCCION,
     PRIZMA_HOST,
 )
-from auto_prizma.integrations.google.oauth import google_token_exists
-from auto_prizma.services.auth import _nombre_visible, _usuario_actual
+from auto_prizma.services.auth import acceso_local_directo, _nombre_visible, _usuario_actual
 from auto_prizma.services.health import cached_service_status
 from auto_prizma.web.icons import icon
 
 APP_NAME = "Cargue Prizma Pro"
+CONTROL_TOWER_URL = (
+    "https://script.google.com/a/macros/americana.edu.co/s/"
+    "AKfycbzh6DwDAEGJDJ8a56UexlEINc7NzYpS-SoONAf8fRhj1Q8ksuIdRQRm9XtFUp6dwAm-/exec"
+)
 
 # (clave, texto, ruta, icono) en el orden del menu lateral.
 NAV_ITEMS = (
     ("inicio", "Inicio", "/", "inicio"),
-    ("test", "Test", "/tests", "test"),
-    ("moodle", "Cargue Moodle", "/moodle", "moodle"),
-    ("cargue", "Cargue actual", "/cargue-actual", "subir"),
-    ("cursos", "Cursos", "/cursos", "libro"),
-    ("historial", "Historial", "/historial", "historial"),
-    ("reportes", "Reportes", "/reportes", "reportes"),
-    ("clave", "Mi contraseña", "/cambiar-clave", "clave"),
-    ("salir", "Salir", "/salir", "salir"),
+    ("control-tower", "Control Tower", CONTROL_TOWER_URL, "torre"),
+    ("matrices", "Matrices", "/matrices-favoritas", "hoja"),
+    ("prizma", "Cargue PRIZMA", "/auditor", "subir"),
+    ("moodle", "Cargue Moodle", "/moodle-auditor", "moodle"),
+    ("n8n", "Automatizaciones", "/automatizaciones-n8n", "codigo"),
 )
+
+_PRIZMA_TAB_KEYS = {"prizma", "test", "auditor", "cargue", "cursos", "historial", "reportes", "curso-auditor"}
+_WORKSPACE_TABS = {
+    "prizma": (
+        ("auditor", "Auditor", "/auditor"),
+        ("prizma", "Cargue", "/prizma"),
+        ("test", "Test", "/tests"),
+        ("curso-auditor", "Auditar curso", "/auditor-curso"),
+        ("cursos", "Cursos", "/cursos"),
+        ("cargue", "En curso", "/cargue-actual"),
+        ("historial", "Historial", "/historial"),
+        ("reportes", "Reportes", "/reportes"),
+    ),
+    "moodle": (
+        ("moodle-auditor", "Auditor", "/moodle-auditor"),
+        ("moodle", "Cargue", "/moodle"),
+        ("moodle-etiquetas", "Etiquetas", "/moodle-etiquetas"),
+        ("moodle-auditor-curso", "Auditar curso", "/moodle-auditor-curso"),
+        ("moodle-reportes", "Reportes", "/moodle-reportes"),
+    ),
+}
+
+_WORKSPACE_CSS = """
+.workspace-tabs{display:flex;gap:7px;align-items:center;overflow-x:auto;margin:0 0 20px;padding:5px;border:1px solid var(--borde);border-radius:14px;background:var(--panel);scrollbar-width:thin}
+.workspace-tab{display:inline-flex;align-items:center;justify-content:center;min-height:38px;padding:8px 14px;border-radius:10px;color:var(--texto-2);text-decoration:none;font-size:13px;font-weight:700;white-space:nowrap;transition:background .15s,color .15s}
+.workspace-tab:hover{background:var(--acento-suave);color:var(--acento-texto)}.workspace-tab[aria-current="page"]{background:var(--acento);color:var(--boton-texto);box-shadow:inset 0 0 0 1px var(--acento-borde)}
+.contenido-pagina{display:grid;gap:18px;align-content:start;min-width:0}
+.contenido-pagina>.encabezado{margin:4px 0 0}
+.contenido-pagina>.aviso{margin:0}
+.workspace-content>.encabezado,.workspace-content>.cursos-page>.encabezado,.workspace-content>.moodle-page>.moodle-heading,.workspace-content>.encabezado-inicio{margin:0!important}
+.workspace-content .encabezado-titulo{align-items:center;gap:16px}
+.workspace-content .workspace-page-heading .encabezado-titulo>div{min-width:0}
+.workspace-content .workspace-page-heading p{max-width:800px;line-height:1.5}
+.workspace-content .encabezado .icono-tile.grande{width:56px;height:56px;border-radius:16px}
+.workspace-content .encabezado .icono-tile.grande .icono{width:26px;height:26px}
+.workspace-content .moodle-heading{align-items:center;margin:0}
+.workspace-content>.encabezado h1,.workspace-content>.cursos-page>.encabezado h1,.workspace-content>.moodle-page>.moodle-heading h1,.workspace-content>.encabezado-inicio h1,.workspace-content>h1{margin:0;font-size:30px;line-height:1.2;font-weight:800;letter-spacing:-.02em;text-align:left}
+.workspace-content>h1+p{margin:6px 0 0;color:var(--muted);font-size:15px;text-align:left}
+.workspace-content>.panel.vacio{display:grid;grid-template-columns:56px minmax(0,1fr);gap:10px 16px;align-items:start;padding:28px;text-align:left}
+.workspace-content>.panel.vacio>.icono-tile{grid-column:1;grid-row:1/4}
+.workspace-content>.panel.vacio>h1{grid-column:2;grid-row:1;align-self:center;margin:0;font-size:30px;line-height:1.2;font-weight:800;letter-spacing:-.02em;text-align:left}
+.workspace-content>.panel.vacio>p{grid-column:2;grid-row:2;margin:0;color:var(--muted);text-align:left}
+.workspace-content>.panel.vacio>.boton{grid-column:2;justify-self:start;margin-top:6px}
+@media(max-width:700px){.workspace-content>.encabezado h1,.workspace-content>.cursos-page>.encabezado h1,.workspace-content>.moodle-page>.moodle-heading h1,.workspace-content>.encabezado-inicio h1,.workspace-content>h1,.workspace-content>.panel.vacio>h1{font-size:26px}}
+"""
 
 # Se ejecuta antes de pintar para que el tema oscuro no parpadee.
 _THEME_BOOT = (
@@ -126,30 +171,17 @@ def _service_card():
     )
 
 
-def status_pills(google_connected):
-    """Indicadores de Inicio: Google (real, del servidor), Chromium y PRIZMA.
+def status_pills():
+    """Indicadores de Chromium y PRIZMA.
 
     Chromium y PRIZMA se pintan con lo que haya en memoria y static/app.js
     los actualiza con /estado-servicio.
     """
-    if google_connected:
-        google = (
-            '<span class="pastilla" data-estado="ok" title="Tu cuenta de Google está conectada (solo lectura)">'
-            + icon("google") + '<span>Google conectado</span><i class="punto"></i></span>'
-        )
-    else:
-        google = (
-            '<a class="pastilla" data-estado="aviso" href="/google/conectar" '
-            'title="Necesario para leer la matriz por link">'
-            + icon("google") + '<span>Conectar Google</span><i class="punto"></i></a>'
-        )
-
     estado = _initial_status()
     chromium, detalle_chromium = estado["chromium"]
     prizma, detalle_prizma = estado["prizma"]
     return (
         '<div class="pastillas">'
-        + google
         + '<span class="pastilla" data-servicio="pastilla-chromium" data-estado="' + chromium
         + '" title="' + _e(detalle_chromium) + '">' + icon("chromium", "icono icono-chromium")
         + '<span data-texto>' + _TEXTOS_ESTADO[("pastilla-chromium", chromium)] + '</span><i class="punto"></i></span>'
@@ -197,15 +229,10 @@ def _theme_button():
 
 
 def _user_menu():
+    if acceso_local_directo():
+        return ""
     usuario = _usuario_actual() or ""
     nombre = _nombre_visible(usuario) or usuario or "Usuario"
-    google = ""
-    if google_token_exists(usuario):
-        google = (
-            '<form method="post" action="/google/desconectar">'
-            '<button type="submit" role="menuitem">' + icon("google") + "Desconectar Google</button></form>"
-        )
-
     return (
         '<div class="menu-usuario" data-menu>'
         '<button type="button" class="boton-usuario" data-menu-boton aria-haspopup="menu" '
@@ -214,21 +241,21 @@ def _user_menu():
         + icon("chevron") + "</button>"
         '<div class="menu-desplegable" role="menu" data-menu-lista hidden>'
         '<div class="menu-cabecera"><strong>' + _e(nombre) + "</strong><span>" + _e(usuario) + "</span></div>"
-        '<a role="menuitem" href="/cambiar-clave">' + icon("clave") + "Mi contraseña</a>"
-        + google
-        + '<a role="menuitem" href="/salir">' + icon("salir") + "Salir</a>"
-        "</div></div>"
+        + "</div></div>"
     )
 
 
-def _sidebar(active):
+def _sidebar(active, *, nested=False):
     enlaces = []
     for clave, texto, ruta, nombre_icono in NAV_ITEMS:
         actual = clave == active
+        es_externo = clave == "control-tower"
         enlaces.append(
             '<a class="nav-item' + (" activo" if actual else "") + '" href="' + ruta + '"'
-            + (' aria-current="page"' if actual else "") + ">"
-            + icon(nombre_icono) + "<span>" + html.escape(texto) + "</span></a>"
+            + (' target="_blank" rel="noopener noreferrer" aria-label="Control Tower (abre en una pestaña nueva)"' if es_externo else "")
+            + (' aria-current="location"' if actual and nested else (' aria-current="page"' if actual else "")) + ">"
+            + icon(nombre_icono) + "<span>" + html.escape(texto) + "</span>"
+            + (icon("externo", "icono nav-externo") if es_externo else "") + "</a>"
         )
 
     return (
@@ -276,15 +303,27 @@ def render_page(title, content, *, active="", page_css="", page_js="", after_mai
         page_css / page_js: estilos y script propios de la pagina.
         after_main: HTML que va fuera del contenido (dialogos, cargadores).
     """
+    workspace = "prizma" if active in _PRIZMA_TAB_KEYS else ("moodle" if active in {"moodle", "moodle-auditor", "moodle-etiquetas", "moodle-auditor-curso", "moodle-reportes"} else "")
+    nav_active = workspace or active
+    tabs = _WORKSPACE_TABS.get(workspace, ())
+    tabs_html = ""
+    if tabs:
+        tabs_html = '<nav class="workspace-tabs" aria-label="' + ("Herramientas PRIZMA" if workspace == "prizma" else "Herramientas Moodle") + '">'
+        tabs_html += "".join(
+            '<a class="workspace-tab' + (" activo" if key == active else "") + '" href="' + ruta + '"'
+            + (' aria-current="page"' if key == active else "") + '>' + html.escape(label) + '</a>'
+            for key, label, ruta in tabs
+        ) + '</nav>'
     return (
-        _head(title, page_css)
+        _head(title, page_css + (_WORKSPACE_CSS if tabs else ""))
         + '<body><div class="app">'
-        + _sidebar(active)
+        + _sidebar(nav_active, nested=bool(tabs))
         + '<div class="principal"><header class="barra-superior">'
         + _theme_button() + _user_menu()
         + '</header><main class="contenido" id="contenido">'
         + environment_notice()
-        + content
+        + tabs_html
+        + '<div class="contenido-pagina' + (' workspace-content' if tabs else '') + '">' + content + '</div>'
         + "</main></div></div>"
         + after_main
         + _scripts(page_js)

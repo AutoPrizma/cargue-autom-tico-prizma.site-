@@ -1,4 +1,4 @@
-"""Middleware que exige sesion, login, cierre de sesion y cambio de contrasena.
+"""Middleware que exige sesion y maneja el login.
 """
 
 from fastapi import (
@@ -14,7 +14,7 @@ import html
 
 from auto_prizma.core.application import app
 from auto_prizma.web.icons import icon
-from auto_prizma.web.layout import render_page, render_public_page
+from auto_prizma.web.layout import render_public_page
 from auto_prizma.services.auth import (
     SESION_COOKIE,
     SESION_HORAS,
@@ -23,15 +23,13 @@ from auto_prizma.services.auth import (
     _bloqueado,
     _cargar_usuarios,
     _cookie_segura,
-    _crear_usuario,
     _firmar_sesion,
     _limpiar_fallos,
-    _nombre_visible,
     _normalizar_usuario,
     _registrar_fallo,
-    _usuario_actual,
     _usuario_de_request,
-    local_login_user_for,
+    local_identity_for,
+    ACCESO_LOCAL_DIRECTO,
 )
 
 
@@ -45,7 +43,6 @@ from auto_prizma.services.auth import (
 
 RUTAS_PUBLICAS = {
     "/login",
-    "/salir",
     "/favicon.ico",
     "/auto-prizma-logo.png",
     "/app.css",
@@ -103,8 +100,9 @@ async def exigir_sesion(request: FastAPIRequest, call_next):
     if ruta in RUTAS_PUBLICAS:
         return await call_next(request)
 
-    # Sin login solo en local (AUTO_PRIZMA_SIN_LOGIN y petición desde 127.0.0.1).
-    usuario = _usuario_de_request(request) or local_login_user_for(request)
+    # En el equipo local se usa una identidad fija; fuera de loopback se exige sesión.
+    identidad_local = local_identity_for(request)
+    usuario = identidad_local or _usuario_de_request(request)
 
     if not usuario:
         acepta = str(request.headers.get("accept") or "")
@@ -118,17 +116,19 @@ async def exigir_sesion(request: FastAPIRequest, call_next):
         return RedirectResponse("/login", status_code=303)
 
     testigo = USUARIO_ACTUAL.set(usuario)
+    testigo_local = ACCESO_LOCAL_DIRECTO.set(identidad_local is not None)
     request.state.usuario = usuario
 
     try:
         return await call_next(request)
     finally:
+        ACCESO_LOCAL_DIRECTO.reset(testigo_local)
         USUARIO_ACTUAL.reset(testigo)
 
 
 @app.get("/login", response_class=HTMLResponse)
 def login_formulario(request: FastAPIRequest):
-    if _usuario_de_request(request) or local_login_user_for(request):
+    if _usuario_de_request(request) or local_identity_for(request):
         return RedirectResponse("/", status_code=303)
 
     return HTMLResponse(_pagina_login())
@@ -140,6 +140,9 @@ def login_enviar(
     usuario: str = Form(...),
     contrasena: str = Form(...),
 ):
+    if local_identity_for(request):
+        return RedirectResponse("/", status_code=303)
+
     usuario = _normalizar_usuario(usuario)
 
     origen = str(
@@ -195,81 +198,3 @@ def login_enviar(
     print("Login OK:", autenticado, "desde", origen)
 
     return respuesta
-
-
-@app.get("/salir")
-@app.post("/salir")
-def cerrar_sesion():
-    respuesta = RedirectResponse("/login", status_code=303)
-    respuesta.delete_cookie(SESION_COOKIE, path="/")
-    return respuesta
-
-
-@app.get("/cambiar-clave", response_class=HTMLResponse)
-def cambiar_clave_formulario(mensaje: str = "", error: str = ""):
-    plantilla = """
-<header class="encabezado"><div class="encabezado-titulo">
-  <span class="icono-tile grande">__ICONO__</span>
-  <div><h1>Mi contraseña</h1><p>Sesión de <strong>__USUARIO__</strong></p></div>
-</div></header>
-<form class="panel tarjeta-formulario" method="post" action="/cambiar-clave">
-  __AVISO__
-  <label for="clave-actual">Contraseña actual</label>
-  <input id="clave-actual" name="actual" type="password" autocomplete="current-password" required>
-  <label for="clave-nueva">Nueva contraseña</label>
-  <input id="clave-nueva" name="nueva" type="password" autocomplete="new-password" required
-         minlength="8">
-  <label for="clave-repetir">Repite la nueva</label>
-  <input id="clave-repetir" name="repetir" type="password" autocomplete="new-password" required
-         minlength="8">
-  <button class="boton" type="submit">Guardar</button>
-  <p class="pie">Mínimo 8 caracteres.</p>
-</form>"""
-
-    aviso = ""
-    if error:
-        aviso = (
-            '<div class="aviso error" role="alert">' + icon("alerta-circulo")
-            + "<div><strong>" + html.escape(str(error)) + "</strong></div></div>"
-        )
-    elif mensaje:
-        aviso = (
-            '<div class="aviso ok" role="status">' + icon("check-circulo")
-            + "<div><strong>" + html.escape(str(mensaje)) + "</strong></div></div>"
-        )
-
-    contenido = (
-        plantilla
-        .replace("__ICONO__", icon("clave"))
-        .replace("__USUARIO__", html.escape(_nombre_visible(_usuario_actual())))
-        .replace("__AVISO__", aviso)
-    )
-    return HTMLResponse(render_page("Mi contraseña", contenido, active="clave"))
-
-
-@app.post("/cambiar-clave", response_class=HTMLResponse)
-def cambiar_clave_enviar(
-    actual: str = Form(...),
-    nueva: str = Form(...),
-    repetir: str = Form(...),
-):
-    usuario = _usuario_actual()
-
-    if not _autenticar(usuario, actual):
-        return cambiar_clave_formulario(
-            error="La contrasena actual no es correcta."
-        )
-
-    if nueva != repetir:
-        return cambiar_clave_formulario(
-            error="La nueva contrasena y su repeticion no coinciden."
-        )
-
-    try:
-        _crear_usuario(usuario, nueva)
-    except ValueError as problema:
-        return cambiar_clave_formulario(error=str(problema))
-
-    return cambiar_clave_formulario(
-        mensaje="Contrasena actualizada."
-    )

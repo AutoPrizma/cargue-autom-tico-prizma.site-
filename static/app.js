@@ -28,6 +28,36 @@
 
   aplicarTema(temaActual());
 
+  // Zonas de selección: anima el borde vacío y lo detiene con un archivo listo.
+  function actualizarZonaArchivo(zona, archivoPresente) {
+    if (!zona) return;
+    zona.classList.toggle("archivo-listo", Boolean(archivoPresente));
+    var input = zona.querySelector('input[type="file"]');
+    zona.classList.toggle("archivo-inactivo", Boolean(input && input.disabled));
+  }
+
+  document.querySelectorAll(".dropzone, .moodle-file-drop, .moodle-label-file").forEach(function (zona) {
+    var input = zona.querySelector('input[type="file"]');
+    actualizarZonaArchivo(zona, Boolean(input && input.files && input.files.length));
+  });
+
+  document.addEventListener("change", function (evento) {
+    var input = evento.target;
+    if (!input || !input.matches || !input.matches('input[type="file"]')) return;
+    var zona = input.closest(".dropzone, .moodle-file-drop, .moodle-label-file");
+    if (!zona) return;
+    // Deja terminar validaciones de la vista (por ejemplo, retirar un archivo inválido).
+    Promise.resolve().then(function () {
+      actualizarZonaArchivo(zona, Boolean(input.files && input.files.length));
+    });
+  });
+
+  document.addEventListener("drop", function (evento) {
+    var zona = evento.target.closest && evento.target.closest(".dropzone, .moodle-file-drop, .moodle-label-file");
+    var archivos = evento.dataTransfer && evento.dataTransfer.files;
+    if (zona && archivos && archivos.length) actualizarZonaArchivo(zona, true);
+  });
+
   document.addEventListener("click", function (evento) {
     if (!evento.target.closest("[data-tema-toggle]")) return;
     var siguiente = temaActual() === "dark" ? "light" : "dark";

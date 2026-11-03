@@ -1,12 +1,10 @@
-# Arranca AUTO PRIZMA PRO en este equipo SIN pedir login.
+# Arranca AUTO PRIZMA PRO en este equipo.
 #
-# Uso:  powershell -ExecutionPolicy Bypass -File scripts\run_local.ps1 [-Usuario <usuario>]
+# Uso:  powershell -ExecutionPolicy Bypass -File scripts\run_local.ps1 [-Puerto <puerto>]
 #
-# Entra como -Usuario (debe existir y estar activo: scripts\manage_users.py listar).
-# Solo vale desde 127.0.0.1: desde otra IP se sigue pidiendo usuario y contraseña.
+# Desde 127.0.0.1 la app entra directamente, sin usuario ni contraseña.
 # Las credenciales de PRIZMA de cada cargue se siguen pidiendo. Nunca usar en un servidor.
 param(
-    [string]$Usuario = "12345678",
     [int]$Puerto = 8000
 )
 
@@ -16,7 +14,6 @@ Set-Location $raiz
 $python = Join-Path $raiz ".venv\Scripts\python.exe"
 if (-not (Test-Path $python)) { $python = "python" }
 
-$env:AUTO_PRIZMA_SIN_LOGIN = $Usuario
 # Evita UnicodeEncodeError del motor cuando la salida no es UTF-8 (ver CLAUDE.md).
 $env:PYTHONIOENCODING = "utf-8"
 

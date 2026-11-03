@@ -1,7 +1,17 @@
 ﻿.venv/
+.venv-1/
 __pycache__/
 *.pyc
+.DS_Store
+*.log
+*.tmp
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
 
+# Archivos temporales y cargues locales (no subir trabajos en curso).
 uploads/*
 temp/*
 resultados/*
@@ -10,7 +20,15 @@ resultados/*
 !temp/.gitkeep
 !resultados/.gitkeep
 
-# Secretos y datos locales. NUNCA subir esto.
+# Datos locales: historial (15 días), reportes, estado de cursos y auditorías.
+# Mantener estas reglas explícitas aunque data/ ya los cubra.
+data/historial.json
+data/estado_cursos.json
+data/matrices_favoritas.json
+data/reportes/
+data/auditorias/
+
+# Secretos y demás datos privados locales. NUNCA subir esto.
 .env
 client_secret*.json
 data/
@@ -26,5 +44,4 @@ aplicar_*.py
 parche_*.py
 *.zip
 
-# Cache de herramientas
-.pytest_cache/
+# Cache de herramientas adicionales

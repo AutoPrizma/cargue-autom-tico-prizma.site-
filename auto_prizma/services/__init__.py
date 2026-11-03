@@ -1,1 +1,1 @@
-"""Logica de negocio: autenticacion, analisis de matriz, validacion Drive/ZIP y cargues."""
+"""Lógica de negocio: autenticación, análisis local de matrices y cargues."""

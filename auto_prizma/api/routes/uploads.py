@@ -306,12 +306,12 @@ _CSS_CARGUES = r"""
 .avance-cab { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; color: var(--muted); font-size: 12px; }
 .avance-cab strong { font-size: 22px; color: var(--acento-texto); }
 .barra { height: 10px; border-radius: 999px; background: var(--acento-suave); overflow: hidden; }
-.barra-interna { height: 100%; border-radius: 999px; background: linear-gradient(90deg, #6759f5, #4f46e5); }
+.barra-interna { height: 100%; border-radius: 999px; background: var(--boton); }
 .metricas { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-top: 12px; }
 .metricas div { display: grid; grid-template-columns: 8px 1fr; column-gap: 6px; align-items: center; }
 .metricas i { width: 7px; height: 7px; border-radius: 50%; }
-.metricas i.verde { background: #12b76a; }
-.metricas i.rojo { background: #f04438; }
+.metricas i.verde { background: var(--verde); }
+.metricas i.rojo { background: var(--rojo); }
 .metricas small { font-size: 11px; color: var(--muted); }
 .metricas strong { grid-column: 2; font-size: 15px; color: var(--texto); }
 .accion-bloque { display: grid; gap: 8px; padding-left: 22px; border-left: 1px solid var(--borde); }
@@ -332,14 +332,24 @@ _CSS_CARGUES = r"""
 """
 
 
-def _pagina_progreso():
-    """Pagina de progreso de un cargue (se guarda en el trabajo para /proceso/<id>)."""
+def _pagina_progreso(
+    titulo="Cargue en progreso",
+    lista_titulo="Actividades del cargue",
+    active="cargue",
+    estado_url="",
+):
+    """Pagina de progreso de un trabajo (se guarda en el para /proceso/<id>).
+
+    Es generica: la usan los cargues normales y los trabajos cortos de
+    /cursos (reintento individual y verificacion), que solo cambian el
+    titulo y la etiqueta de la lista.
+    """
     contenido = """
-    <section id="cargue-progreso" class="panel cabecera-progreso">
+    <section id="cargue-progreso" class="panel cabecera-progreso" data-estado-url="__ESTADO_URL__">
         <div class="cabecera-linea">
             <div class="cabecera-titulo">
                 <span class="icono-tile">__ICONO_SUBIR__</span>
-                <h1>Cargue en progreso</h1>
+                <h1>__TITULO__</h1>
             </div>
             <div class="porcentaje"><strong id="porcentaje">0%</strong> completado</div>
         </div>
@@ -364,7 +374,7 @@ def _pagina_progreso():
 
     <section class="zona">
         <div class="panel lista-panel">
-            <h2 class="titulo-panel">Actividades del cargue</h2>
+            <h2 class="titulo-panel">__LISTA_TITULO__</h2>
             <div id="lista-actividades" class="lista-actividades">
                 <div class="actividad-progreso">Preparando lista de actividades...</div>
             </div>
@@ -385,6 +395,7 @@ def _pagina_progreso():
                 <div>⏳ Pendiente</div>
                 <div>🔄 Procesando</div>
                 <div>✅ Completada</div>
+                <div>➖ Omitida</div>
                 <div>❌ Con error</div>
             </div>
             <form action="/cancelar/__TRABAJO_ID__" method="post" class="form-cancelar">
@@ -400,11 +411,14 @@ def _pagina_progreso():
         .replace("__ICONO_GIRAR__", icon("girar"))
         .replace("__ICONO_OK__", icon("check-circulo"))
         .replace("__ICONO_ERROR__", icon("alerta-circulo"))
+        .replace("__TITULO__", titulo)
+        .replace("__LISTA_TITULO__", lista_titulo)
+        .replace("__ESTADO_URL__", estado_url)
     )
     return render_page(
-        "Cargue en progreso",
+        titulo,
         contenido,
-        active="cargue",
+        active=active,
         page_css=_CSS_PROGRESO,
         page_js=_JS_PROGRESO,
     )
@@ -418,7 +432,7 @@ _CSS_PROGRESO = r"""
 .porcentaje { font-size: 14px; color: var(--muted); }
 .porcentaje strong { font-size: 20px; color: var(--acento-texto); }
 .barra-progreso { height: 12px; background: var(--acento-suave); border-radius: 999px; overflow: hidden; margin: 22px 0 14px; }
-.progreso { height: 100%; width: 0%; border-radius: 999px; background: linear-gradient(90deg, #6759f5, #4f46e5); transition: width .35s ease; }
+.progreso { height: 100%; width: 0%; border-radius: 999px; background: var(--boton); transition: width .35s ease; }
 .estado { color: var(--acento-texto); font-size: 14px; font-weight: 600; line-height: 1.45; }
 .numeros { display: grid; grid-template-columns: repeat(3, 1fr); gap: 18px; margin: 20px 0; }
 .numero { padding: 20px; display: flex; align-items: center; gap: 16px; }
@@ -437,6 +451,7 @@ _CSS_PROGRESO = r"""
 .actividad-nombre { font-size: 13px; line-height: 1.4; color: var(--texto); }
 .actividad-error { margin-top: 4px; color: var(--rojo); font-size: 11.5px; word-break: break-word; }
 .actividad-ok { background: var(--verde-suave); }
+.actividad-omitida { background: var(--ambar-suave); }
 .actividad-error-fila { background: var(--rojo-suave); }
 .actividad-procesando { background: var(--acento-suave); box-shadow: inset 3px 0 0 var(--acento); }
 .estado-caja { padding: 16px; margin-bottom: 14px; border: 1px solid var(--borde); border-radius: 12px; background: var(--panel-2); }
@@ -457,6 +472,8 @@ _CSS_PROGRESO = r"""
 
 _JS_PROGRESO = r"""
 const trabajoId = "__TRABAJO_ID__";
+const raizProgreso = document.getElementById("cargue-progreso");
+const estadoUrl = (raizProgreso && raizProgreso.dataset.estadoUrl) || ("/estado/" + trabajoId);
 
 function escaparHtml(texto) {
     return String(texto ?? "")
@@ -489,6 +506,9 @@ function renderizarActividades(actividades) {
         } else if (actividad.estado === "ok") {
             icono = "✅";
             clase = "actividad-ok";
+        } else if (actividad.estado === "omitido") {
+            icono = "➖";
+            clase = "actividad-omitida";
         } else if (actividad.estado === "error") {
             icono = "❌";
             clase = "actividad-error-fila";
@@ -499,7 +519,7 @@ function renderizarActividades(actividades) {
             '<div><div class="actividad-nombre">' +
             actividad.numero + '. ' + escaparHtml(actividad.nombre) + '</div>';
 
-        if (actividad.estado === "error" && actividad.error) {
+        if ((actividad.estado === "error" || actividad.estado === "omitido") && actividad.error) {
             html += '<div class="actividad-error">' + escaparHtml(actividad.error) + '</div>';
         }
 
@@ -512,13 +532,22 @@ function renderizarActividades(actividades) {
 
 async function revisarEstado() {
     try {
-        const respuesta = await fetch("/estado/" + trabajoId);
+        const respuesta = await fetch(estadoUrl);
         const datos = await respuesta.json();
 
-        document.getElementById("estado").innerText = datos.mensaje + (datos.posicion_cola ? ' · Posición en cola: ' + datos.posicion_cola : '');
-        document.getElementById("procesadas").innerText = datos.procesadas;
-        document.getElementById("exitosas").innerText = datos.exitosas;
-        document.getElementById("errores").innerText = datos.errores;
+        if (!respuesta.ok || datos.error) {
+            document.getElementById("estado").innerText = datos.error || "No se pudo consultar el estado del proceso.";
+            document.getElementById("actividad-actual").innerText = "No se pudo consultar el estado";
+            document.getElementById("procesadas").innerText = "0";
+            document.getElementById("exitosas").innerText = "0";
+            document.getElementById("errores").innerText = "0";
+            return;
+        }
+
+        document.getElementById("estado").innerText = (datos.mensaje || "Preparando proceso...") + (datos.posicion_cola ? ' · Posición en cola: ' + datos.posicion_cola : '');
+        document.getElementById("procesadas").innerText = datos.procesadas ?? 0;
+        document.getElementById("exitosas").innerText = datos.exitosas ?? 0;
+        document.getElementById("errores").innerText = datos.errores ?? 0;
         document.getElementById("total-actividades").innerText = datos.total || "—";
 
         renderizarActividades(datos.detalle_actividades);

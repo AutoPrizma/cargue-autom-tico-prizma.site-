@@ -1,4 +1,4 @@
-"""Lectura de la matriz (CSV, Excel o Google Sheets) y analisis de la matriz y del ZIP.
+"""Lectura de matrices CSV/Excel y analisis de la matriz y del ZIP.
 """
 
 from io import BytesIO
@@ -6,9 +6,6 @@ from openpyxl import (
     load_workbook,
     Workbook,
 )
-from googleapiclient.discovery import build
-from googleapiclient.errors import HttpError
-from googleapiclient.http import MediaIoBaseDownload
 from auto_prizma.automation.prizma.engine import (
     determinar_tipo_archivo,
     normalizar_categoria,
@@ -19,40 +16,12 @@ import csv
 import os
 import re
 
-from auto_prizma.core.config import EXTENSIONES_HTML, GOOGLE_SHEETS_MAX_BYTES
-from auto_prizma.integrations.google.oauth import _cargar_credenciales_google
-from auto_prizma.integrations.google.drive import _misma_hoja
+from auto_prizma.core.config import EXTENSIONES_HTML
 
 
 # ============================================================
 # CONVERTIR CSV A XLSX INTERNO
 # ============================================================
-
-def _validar_origen_matriz(modo, google_sheet_url=None, nombre_archivo=None):
-    """Valida que la matriz provenga de una sola fuente: link o archivo."""
-    modo = str(modo or "").strip().lower()
-    tiene_link = bool(str(google_sheet_url or "").strip())
-    tiene_archivo = bool(str(nombre_archivo or "").strip())
-
-    if modo not in {"link", "archivo"}:
-        return False, "Selecciona si cargarás la matriz por link o por archivo."
-
-    if tiene_link and tiene_archivo:
-        return False, "Usa una sola fuente de matriz: por link o por archivo."
-
-    if modo == "link":
-        if not tiene_link:
-            return False, "Pega el enlace de Google Sheets."
-        if tiene_archivo:
-            return False, "Usa una sola fuente de matriz: por link o por archivo."
-        return True, ""
-
-    if not tiene_archivo:
-        return False, "Selecciona un archivo XLSX o CSV."
-    if tiene_link:
-        return False, "Usa una sola fuente de matriz: por link o por archivo."
-    return True, ""
-
 
 def _parsear_datos_academicos(texto: str) -> dict | None:
     """Parsea el campo único de datos académicos:
@@ -202,140 +171,6 @@ def _normalizar_contenido_matriz_archivo(nombre_archivo, contenido):
 
 
 # ============================================================
-# DESCARGAR MATRIZ DESDE GOOGLE SHEETS
-# ============================================================
-
-# GOOGLE_SHEETS_MAX_BYTES vive en auto_prizma.core.config.
-
-
-def descargar_google_sheet_xlsx(url_google_sheet):
-    """Exporta un Google Sheet privado a XLSX usando la cuenta OAuth conectada."""
-
-    url_google_sheet = str(url_google_sheet or "").strip()
-
-    coincidencia = re.search(
-        r"docs\.google\.com/spreadsheets/d/([A-Za-z0-9_-]+)",
-        url_google_sheet,
-        flags=re.IGNORECASE,
-    )
-
-    if not coincidencia:
-        raise ValueError(
-            "El enlace de Google Sheets no es válido. Copia el enlace completo de la matriz."
-        )
-
-    credenciales = _cargar_credenciales_google()
-
-    if credenciales is None:
-        raise ValueError(
-            "Primero debes conectar tu cuenta de Google antes de analizar una matriz privada."
-        )
-
-    spreadsheet_id = coincidencia.group(1)
-
-    try:
-        drive = build(
-            "drive",
-            "v3",
-            credentials=credenciales,
-            cache_discovery=False,
-        )
-
-        metadata = drive.files().get(
-            fileId=spreadsheet_id,
-            fields="id,name,mimeType",
-            supportsAllDrives=True,
-        ).execute()
-
-        mime_type = str(metadata.get("mimeType") or "")
-
-        if mime_type != "application/vnd.google-apps.spreadsheet":
-            raise ValueError(
-                "El enlace no corresponde a una hoja nativa de Google Sheets."
-            )
-
-        salida = BytesIO()
-
-        solicitud = drive.files().export_media(
-            fileId=spreadsheet_id,
-            mimeType=(
-                "application/vnd.openxmlformats-officedocument."
-                "spreadsheetml.sheet"
-            ),
-        )
-
-        descargador = MediaIoBaseDownload(
-            salida,
-            solicitud,
-            chunksize=1024 * 1024,
-        )
-
-        terminado = False
-
-        while not terminado:
-            _, terminado = descargador.next_chunk()
-
-            if salida.tell() > GOOGLE_SHEETS_MAX_BYTES:
-                raise ValueError(
-                    "La matriz de Google Sheets supera el tamaño máximo permitido."
-                )
-
-        contenido = salida.getvalue()
-
-    except ValueError:
-        raise
-
-    except HttpError as error:
-        estado = getattr(getattr(error, "resp", None), "status", None)
-
-        if estado in (401, 403):
-            mensaje = (
-                "La cuenta de Google conectada no tiene permiso para leer esta matriz. "
-                "Verifica que puedas abrirla con esa misma cuenta."
-            )
-        elif estado == 404:
-            mensaje = (
-                "Google Drive no encontró la matriz o la cuenta conectada no tiene acceso."
-            )
-        else:
-            mensaje = (
-                "Google Drive no pudo exportar la matriz. "
-                f"Código HTTP: {estado or 'desconocido'}."
-            )
-
-        raise ValueError(mensaje) from error
-
-    except Exception as error:
-        raise ValueError(
-            "No fue posible descargar la matriz mediante la cuenta de Google conectada."
-        ) from error
-
-    if not contenido:
-        raise ValueError(
-            "Google Drive devolvió una matriz vacía."
-        )
-
-    if not contenido.startswith(b"PK"):
-        raise ValueError(
-            "Google Drive no devolvió un archivo Excel válido."
-        )
-
-    try:
-        libro_prueba = load_workbook(
-            BytesIO(contenido),
-            read_only=True,
-            data_only=False,
-        )
-        libro_prueba.close()
-    except Exception as error:
-        raise ValueError(
-            "La matriz descargada desde Google Sheets no pudo leerse como XLSX."
-        ) from error
-
-    return contenido
-
-
-# ============================================================
 # ANALIZAR MATRIZ
 # ============================================================
 
@@ -344,7 +179,6 @@ def analizar_excel(
     procesar_ovi=True,
     procesar_ova=True,
     procesar_retos=True,
-    hoja_objetivo=None,
     formato_recurso="H5P",
 ):
     # formato_recurso: "H5P" o "HTML". En modo HTML las actividades de
@@ -359,9 +193,6 @@ def analizar_excel(
     hojas_validas = []
 
     for nombre_hoja in libro.sheetnames:
-
-        if not _misma_hoja(nombre_hoja, hoja_objetivo):
-            continue
 
         hoja = libro[
             nombre_hoja

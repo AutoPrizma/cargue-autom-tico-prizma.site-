@@ -161,7 +161,7 @@ def _preview(tmp_path, monkeypatch, matrix):
     monkeypatch.setattr(moodle_resources, "UPLOADS_DIR", str(tmp_path / "uploads"))
     output = io.BytesIO()
     with zipfile.ZipFile(output, "w") as archive:
-        archive.writestr("U1-T1-Recurso de analitica.pdf", b"pdf")
+        archive.writestr("U1-T1-Recurso de analitica.pdf", b"%PDF-1.4 test")
     response = _client().post(
         "/moodle/analizar",
         files={

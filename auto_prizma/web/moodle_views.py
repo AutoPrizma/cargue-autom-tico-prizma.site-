@@ -11,13 +11,13 @@ from auto_prizma.web.layout import render_page
 
 _CSS_MOODLE = """
 .moodle-page{display:grid;grid-template-columns:minmax(0,1fr);gap:18px}.moodle-heading{display:flex;align-items:flex-start;gap:16px;margin:4px 0 2px}.moodle-heading .icono-tile{flex:0 0 56px}.moodle-heading h1{margin:0;font-size:30px;font-weight:800;letter-spacing:-.02em}.moodle-heading p{margin:6px 0 0;color:var(--muted);font-size:15px}.moodle-heading .moodle-files{display:flex;flex-wrap:wrap;gap:6px 14px;margin-top:8px;font-size:13px;color:var(--texto-2)}.moodle-files span{display:inline-flex;align-items:center;gap:6px;min-width:0;overflow-wrap:anywhere}.moodle-files .icono{width:15px;height:15px;flex:0 0 15px}
-.moodle-panel{padding:24px}.moodle-panel h2{margin:0 0 4px}.moodle-form{display:grid;grid-template-columns:1fr 1fr;gap:18px}.moodle-field{display:grid;gap:7px;min-width:0}.moodle-field label{font-weight:700;color:var(--texto-2)}.moodle-field input[type=file],.moodle-field input[type=url]{width:100%;min-height:48px;border:1px solid var(--borde-2);border-radius:11px;background:var(--panel);padding:10px 12px}.moodle-field.full,.moodle-form-actions{grid-column:1/-1}.moodle-form-actions{display:flex;gap:10px;flex-wrap:wrap}.moodle-help{color:var(--muted);font-size:12px}
+.moodle-panel{padding:24px}.moodle-panel h2{margin:0 0 4px}.moodle-form{display:grid;grid-template-columns:1fr 1fr;gap:18px}.moodle-field{display:grid;gap:7px;min-width:0}.moodle-field label{font-weight:700;color:var(--texto-2)}.moodle-field input[type=url]{width:100%;min-height:48px;border:1px solid var(--borde-2);border-radius:11px;background:var(--panel);padding:10px 12px}.moodle-field.full,.moodle-form-actions{grid-column:1/-1}.moodle-form-actions{display:flex;gap:10px;flex-wrap:wrap}.moodle-help{color:var(--muted);font-size:12px}.moodle-file-drop{display:grid;justify-items:center;gap:6px;text-align:center;min-height:170px;padding:22px 16px;border:2px dashed var(--acento-borde);border-radius:14px;background:var(--panel-2);cursor:pointer;transition:border-color .15s,background .15s}.moodle-file-drop:hover,.moodle-file-drop.dragover{border-color:var(--acento);background:var(--acento-suave)}.moodle-file-drop input{display:none}.moodle-file-drop .icono{width:32px;height:32px;color:var(--acento-texto)}.moodle-file-drop strong{font-size:14px}.moodle-file-drop small{color:var(--muted)}.moodle-file-ready{display:flex;align-items:center;gap:10px;min-width:0;padding:10px 12px;border:1px solid var(--borde);border-radius:12px;background:var(--panel)}.moodle-file-ready[hidden]{display:none}.moodle-file-ready span:nth-child(2){min-width:0;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:13px}.moodle-file-ready button{border:0;background:none;color:var(--muted);cursor:pointer;font:inherit}
 .moodle-overview{display:grid;gap:12px;padding:18px 24px}.moodle-stats{display:flex;flex-wrap:wrap;gap:10px 28px}.moodle-stat{display:flex;align-items:baseline;gap:8px}.moodle-stat strong{font-size:26px;font-weight:800;color:var(--texto)}.moodle-stat span{color:var(--texto-2);font-size:14px;font-weight:600}.moodle-stat.verde strong{color:var(--verde)}.moodle-stat.ambar strong{color:var(--ambar)}.moodle-stat.azul strong{color:var(--azul)}.moodle-stat.gris strong{color:var(--muted)}.moodle-ignored summary{cursor:pointer;color:var(--muted);font-size:13px}.moodle-ignored p{margin:8px 0 0;color:var(--texto-2);font-size:12px;line-height:1.6}
 .moodle-attention h2{display:flex;align-items:center;gap:8px;color:var(--ambar)}.moodle-attention h2 .icono{width:20px;height:20px}.moodle-attention-list{display:grid;gap:8px;margin:12px 0 0;padding:0;list-style:none}.moodle-attention-list li{display:grid;grid-template-columns:auto minmax(0,1fr);gap:4px 12px;align-items:start;padding:10px 12px;border:1px solid var(--borde);border-radius:10px;background:var(--ambar-suave)}.moodle-attention-list strong{display:block;font-size:13px}.moodle-attention-list small{display:block;color:var(--texto-2);font-size:12px;overflow-wrap:anywhere}
 .moodle-weeks{display:grid;gap:10px}.moodle-weeks-head{display:flex;flex-wrap:wrap;justify-content:space-between;align-items:flex-end;gap:8px 20px;margin-top:6px}.moodle-weeks-head h2{margin:0}.moodle-weeks-head .moodle-toolbar{margin:0}.moodle-check-inline{display:inline-flex;align-items:center;gap:6px;font-size:13px;color:var(--texto-2);white-space:nowrap}.moodle-check-inline input{margin:0;width:auto;min-height:0;accent-color:var(--acento)}
 .moodle-week{padding:0;overflow:hidden}.moodle-week>summary{display:flex;flex-wrap:wrap;align-items:center;gap:8px 12px;padding:14px 20px;cursor:pointer;list-style:none}.moodle-week>summary::-webkit-details-marker{display:none}.moodle-week>summary::before{content:"▸";color:var(--muted);transition:transform .15s}.moodle-week[open]>summary::before{transform:rotate(90deg)}.moodle-week>summary strong{font-size:16px}.moodle-week-count{color:var(--muted);font-size:13px}.moodle-week-body{display:grid;gap:12px;padding:0 20px 18px}
 .moodle-block{border:1px solid var(--borde);border-radius:12px;overflow:hidden}.moodle-block h4{margin:0;padding:9px 14px;background:var(--acento-suave);color:var(--acento-texto);font-size:13px}.moodle-block.manual h4{background:var(--panel-2);color:var(--texto-2)}.moodle-block.sin-uso{border-style:dashed}.moodle-block.sin-uso h4{background:var(--panel-2);color:var(--muted);text-decoration:line-through}.moodle-block.sin-uso p{margin:0;padding:10px 14px;color:var(--muted);font-size:12px}.moodle-block ul{margin:0;padding:0;list-style:none}
-.moodle-item{display:grid;grid-template-columns:22px minmax(0,1fr) auto;gap:12px;align-items:start;padding:10px 14px;border-top:1px solid var(--borde)}.moodle-item:first-child{border-top:0}.moodle-item input{margin:3px 0 0;accent-color:var(--acento)}.moodle-item.problema{background:var(--ambar-suave)}.moodle-item-text strong{display:block;font-size:14px;line-height:1.35}.moodle-item-text small{display:flex;flex-wrap:wrap;align-items:center;gap:6px;margin-top:4px;color:var(--muted);font-size:12px;overflow-wrap:anywhere}.moodle-nocheck{color:var(--muted);text-align:center}.moodle-why{color:var(--texto-2)}
+.moodle-item{display:grid;grid-template-columns:22px minmax(0,1fr) auto;gap:12px;align-items:start;padding:10px 14px;border-top:1px solid var(--borde)}.moodle-item:first-child{border-top:0}.moodle-item input{margin:3px 0 0;accent-color:var(--acento)}.moodle-item.problema{background:var(--ambar-suave)}.moodle-item-text strong{display:block;font-size:14px;line-height:1.35}.moodle-item-text small{display:flex;flex-wrap:wrap;align-items:center;gap:6px;margin-top:4px;color:var(--muted);font-size:12px;overflow-wrap:anywhere}.moodle-h5p-check{display:grid;gap:4px;margin-top:7px;color:var(--texto-2);font-size:12px;overflow-wrap:anywhere}.moodle-h5p-check>span{display:flex;align-items:center;gap:6px;flex-wrap:wrap}.moodle-h5p-check .badge{font-size:10px}.moodle-manual-upload{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-top:8px;font-size:12px;color:var(--texto-2)}.moodle-manual-upload input{display:inline-block!important;width:auto;max-width:230px;min-height:0!important;font-size:12px}.moodle-manual-upload .boton{padding:6px 10px;font-size:12px}.moodle-nocheck{color:var(--muted);text-align:center}.moodle-why{color:var(--texto-2)}
 .moodle-labels-option{display:grid;gap:8px;padding:14px;border:1px solid var(--borde);border-radius:12px;background:var(--panel-2)}.moodle-check{display:flex;gap:10px;align-items:flex-start;cursor:pointer}.moodle-check input{margin-top:3px;accent-color:var(--acento)}.moodle-check strong{display:block;font-size:14px}.moodle-check small{display:block;color:var(--muted);font-size:12px;margin-top:2px}.moodle-labels-option summary{cursor:pointer;font-size:13px;font-weight:700;color:var(--acento-texto)}.moodle-labels-option ul{margin:8px 0;padding-left:18px;font-size:13px}
 .moodle-counts{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px}.moodle-count{display:grid;gap:2px;padding:14px 16px;border:1px solid var(--borde);border-radius:14px;background:var(--panel);text-align:left;font:inherit;color:inherit;cursor:pointer}.moodle-count:hover,.moodle-count[aria-pressed=true]{border-color:var(--acento)}.moodle-count[aria-pressed=true]{box-shadow:0 0 0 2px var(--acento-suave)}.moodle-count strong{font-size:23px;color:var(--texto)}.moodle-count span{color:var(--texto-2);font-size:13px;font-weight:700}.moodle-count small{color:var(--muted);font-size:12px}.moodle-count[disabled]{cursor:default}
 .moodle-select{display:grid;gap:14px}.moodle-select-group{display:grid;gap:8px}.moodle-select-group>span{font-weight:700;color:var(--texto-2);font-size:13px}.moodle-chips{display:flex;flex-wrap:wrap;gap:8px}.moodle-chip{display:inline-flex;align-items:center;gap:8px;padding:7px 12px;border:1px solid var(--borde-2);border-radius:999px;background:var(--panel);font-size:13px;font-weight:600;color:var(--texto);cursor:pointer;user-select:none}.moodle-chip:has(input:checked){border-color:var(--acento);background:var(--acento-suave);color:var(--acento-texto)}.moodle-chip input{margin:0;accent-color:var(--acento)}.moodle-chip small{color:var(--muted);font-weight:600}.moodle-chip.disabled{opacity:.55;cursor:not-allowed}
@@ -25,6 +25,11 @@ _CSS_MOODLE = """
 .moodle-toolbar{display:flex;flex-wrap:wrap;gap:10px;align-items:center;margin:12px 0}.moodle-toolbar input[type=search],.moodle-toolbar select{min-height:38px;border:1px solid var(--borde-2);border-radius:10px;background:var(--panel);color:var(--texto);padding:6px 10px;font:inherit;font-size:13px}.moodle-toolbar input[type=search]{flex:1 1 220px;min-width:0}.moodle-toolbar .moodle-visible{color:var(--muted);font-size:12px}
 .moodle-table-wrap{overflow:auto}.moodle-table{min-width:900px}.moodle-table td{vertical-align:top}.moodle-file{max-width:300px;overflow-wrap:anywhere;font-size:13px}.moodle-file small,.moodle-subcell{display:block;color:var(--muted);font-size:12px;margin-top:3px}.moodle-file .moodle-why{color:var(--texto-2)}.moodle-empty{padding:30px;text-align:center;color:var(--muted)}
 .moodle-actions{display:flex;gap:10px;flex-wrap:wrap;align-items:center}.moodle-note{margin:0}.moodle-report-links{display:flex;gap:12px;flex-wrap:wrap}
+.moodle-label-info{padding:0;overflow:hidden}.moodle-label-info>summary{display:flex;align-items:center;gap:10px;padding:20px 24px;cursor:pointer;font-size:18px;font-weight:800;list-style:none}.moodle-label-info>summary::-webkit-details-marker{display:none}.moodle-label-info>summary:after{content:"＋";margin-left:auto;color:var(--acento-texto)}.moodle-label-info[open]>summary:after{content:"−"}.moodle-label-content{display:grid;gap:18px;padding:0 24px 24px}.moodle-label-content>p{margin:0;color:var(--muted);font-size:13px;line-height:1.55}.moodle-label-tool{display:grid;grid-template-columns:minmax(220px,.8fr) minmax(0,1.2fr);gap:18px;align-items:start}.moodle-label-controls{display:grid;gap:14px}.moodle-label-controls label{display:grid;gap:7px;font-size:13px;font-weight:700;color:var(--texto-2)}.moodle-label-controls select,.moodle-label-controls input[type=url],.moodle-label-code{width:100%;border:1px solid var(--borde-2);border-radius:10px;background:var(--panel);color:var(--texto);padding:10px 12px;font:inherit}.moodle-label-file{display:block!important;padding:12px;border:1px dashed var(--acento-borde);border-radius:10px;background:var(--panel-2);cursor:pointer}.moodle-label-file input{width:100%;font:inherit}.moodle-label-output{display:grid;gap:10px;min-width:0}.moodle-label-output h3{margin:0;font-size:14px}.moodle-label-code{min-height:230px;resize:vertical;font:12px/1.5 ui-monospace,SFMono-Regular,monospace;overflow-wrap:anywhere}.moodle-label-preview{max-width:100%;max-height:300px;object-fit:contain;border:1px solid var(--borde);border-radius:8px;background:var(--panel-2)}.moodle-label-preview[hidden]{display:none}.moodle-label-actions{display:flex;gap:10px;flex-wrap:wrap;align-items:center}.moodle-label-message{margin:0;color:var(--muted);font-size:12px}.moodle-label-examples{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px}.moodle-label-example{padding:14px;border:1px solid var(--borde);border-radius:12px;background:var(--panel-2);min-width:0}.moodle-label-example h3{margin:0 0 8px;font-size:13px}.moodle-label-example pre{margin:0;white-space:pre-wrap;overflow-wrap:anywhere;color:var(--texto-2);font:11px/1.5 ui-monospace,SFMono-Regular,monospace}
+.moodle-label-file{display:grid!important;justify-items:center;gap:8px;padding:24px 14px;border:2px dashed var(--acento-borde);border-radius:12px;background:var(--panel-2);text-align:center;cursor:pointer;transition:border-color .15s,background .15s}.moodle-label-file.dragover,.moodle-label-file:hover{border-color:var(--acento);background:var(--acento-suave)}.moodle-label-file input{width:100%;font:inherit}.moodle-label-file strong{color:var(--acento-texto)}
+.moodle-label-file input[type=file]{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);clip-path:inset(50%);white-space:nowrap;border:0}.moodle-label-file:focus-within{outline:3px solid var(--foco);outline-offset:3px}.moodle-label-file-button{pointer-events:none}.moodle-label-file-name{max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--muted);font-size:12px}
+.moodle-label-info{padding:24px}.moodle-label-code-details{border:1px solid var(--borde);border-radius:10px;overflow:hidden}.moodle-label-code-details>summary{padding:10px 12px;cursor:pointer;color:var(--acento-texto);font-size:13px;font-weight:700}.moodle-label-code-details .moodle-label-code{display:block;width:calc(100% - 20px);margin:0 10px 10px;min-height:130px}.moodle-label-code-note{margin:0;color:var(--muted);font-size:12px;line-height:1.45}
+.moodle-label-cards{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:14px}.moodle-label-card{display:grid;align-content:start;gap:10px;padding:16px;border:1px solid var(--borde);border-radius:12px;background:var(--panel-2);min-width:0}.moodle-label-card.activa{border-color:var(--acento);box-shadow:0 0 0 2px var(--acento-suave)}.moodle-label-card h3{margin:0;font-size:16px}.moodle-label-card p{margin:0;color:var(--muted);font-size:12px;line-height:1.45}.moodle-label-card>label:not(.moodle-label-file){display:grid;gap:7px;color:var(--texto-2);font-size:13px;font-weight:700}.moodle-label-card input[type=url]{width:100%;border:1px solid var(--borde-2);border-radius:9px;background:var(--panel);color:var(--texto);padding:10px;font:inherit}.moodle-label-card>.boton{justify-self:start}.moodle-label-preview{max-width:100%;max-height:240px;object-fit:contain;border:1px solid var(--borde);border-radius:8px;background:var(--panel-2)}
 .moodle-run{display:grid;gap:18px}.moodle-progress-head{display:flex;flex-wrap:wrap;justify-content:space-between;gap:12px 20px;align-items:center}.moodle-run-title{display:flex;gap:14px;align-items:center}.moodle-run-title h1{margin:0 0 4px;font-size:24px;font-weight:800}.moodle-run-percent{color:var(--muted);font-size:14px}.moodle-run-percent strong{font-size:20px;color:var(--acento-texto)}.moodle-run-head progress{display:block;width:100%;height:12px;margin:20px 0 12px;accent-color:var(--acento)}.moodle-run-message{color:var(--acento-texto);font-size:14px;font-weight:600;line-height:1.45;overflow-wrap:anywhere}
 .moodle-run-numbers{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:14px}.moodle-run-number{display:flex;align-items:center;gap:14px;padding:18px}.moodle-run-number span:not(.icono-tile){display:block;color:var(--muted);font-size:13px}.moodle-run-number strong{display:block;font-size:26px;font-weight:800;color:var(--texto)}
 .moodle-run-zone{display:grid;grid-template-columns:minmax(0,1.55fr) minmax(260px,.75fr);gap:18px;align-items:start}.moodle-run-side{display:grid;gap:14px}.moodle-run-box{display:grid;gap:4px;padding:14px;border:1px solid var(--borde);border-radius:12px;background:var(--panel-2)}.moodle-run-box span{color:var(--muted);font-size:12px}.moodle-run-box strong{font-size:15px;overflow-wrap:anywhere}.moodle-run-box small{color:var(--texto-2);font-size:12px}.moodle-run-controls .boton{flex:1 1 auto}
@@ -32,7 +37,9 @@ _CSS_MOODLE = """
 .moodle-legend summary,.moodle-issues summary{cursor:pointer;font-weight:700}.moodle-legend dl{display:grid;grid-template-columns:auto 1fr;gap:8px 14px;margin:12px 0 0;align-items:start}.moodle-legend dd{margin:0;color:var(--texto-2);font-size:13px}.moodle-issues ul{margin:8px 0 0;padding-left:18px;font-size:13px}.moodle-issues li{margin:3px 0}
 @media(max-width:1000px){.moodle-run-zone{grid-template-columns:1fr}.moodle-run-numbers{grid-template-columns:repeat(2,minmax(0,1fr))}}
 @media(max-width:800px){.moodle-form{grid-template-columns:1fr}.moodle-field.full,.moodle-form-actions{grid-column:auto}.moodle-counts{grid-template-columns:repeat(2,minmax(0,1fr))}.moodle-steps{grid-template-columns:1fr}.moodle-panel{padding:18px}.moodle-heading h1{font-size:25px}.moodle-legend dl{grid-template-columns:1fr}}
+@media(max-width:800px){.moodle-label-tool{grid-template-columns:1fr}.moodle-label-cards{grid-template-columns:1fr 1fr}}
 @media(max-width:520px){.moodle-form-actions,.moodle-actions{display:grid}.moodle-form-actions .boton,.moodle-actions .boton{width:100%}}
+@media(max-width:520px){.moodle-label-info{padding:16px}.moodle-label-content{padding:0}.moodle-label-cards{grid-template-columns:1fr}.moodle-label-actions .boton{width:100%}}
 """
 
 # Estado de cada fila en la vista previa: (texto, badge, qué significa y qué hacer).
@@ -42,6 +49,8 @@ _TEXT_STATUS = {
     "ambiguous": ("Varios archivos posibles", "badge-rojo", "Más de un archivo del ZIP coincide con el nombre. Deja solo uno para que no se publique el equivocado."),
     "extension-mismatch": ("Tipo de archivo distinto", "badge-ambar", "Se encontró el archivo, pero con otra extensión (por ejemplo, un PDF donde la matriz pide un H5P)."),
     "unsupported": ("Se publica a mano", "badge-gris", "Este tipo de recurso no tiene un destino automático en Moodle (por ejemplo, videos a cámara). Súbelo manualmente."),
+    "title-review": ("Título H5P por revisar", "badge-ambar", "No se verificó una coincidencia exacta del título dentro del contenido. Adjunta manualmente el archivo correcto para habilitar esta fila."),
+    "invalid-file": ("Archivo inválido", "badge-rojo", "El recurso está vacío, no se puede leer o el PDF no es válido. Corrige el archivo antes de publicarlo."),
 }
 
 # Resultado de cada recurso tras publicar: (badge, qué significa y qué hacer).
@@ -91,12 +100,12 @@ def _header(job=None):
             + '<span>' + icon("enlace") + '<a href="' + _e(job.get("course_url")) + '" target="_blank" rel="noopener">Abrir el curso en Moodle</a></span></div>'
         )
         return (
-            '<header class="moodle-heading"><div class="icono-tile azul">' + icon("moodle")
+            '<header class="moodle-heading"><div class="icono-tile">' + icon("moodle")
             + '</div><div><h1>Vista previa Moodle</h1><p>Elige qué recursos publicar, prueba con uno y luego publica el resto.</p>'
             + files + '</div></header>'
         )
     return (
-        '<header class="moodle-heading"><div class="icono-tile azul">' + icon("moodle")
+        '<header class="moodle-heading"><div class="icono-tile">' + icon("moodle")
         + '</div><div><h1>Cargue Moodle</h1><p>Prepara recursos PDF y H5P para un curso de Prizma.</p></div></header>'
     )
 
@@ -107,20 +116,80 @@ def _upload_form(error=""):
         + '<p class="sub">Carga una matriz exportada y un ZIP con los archivos del curso. La matriz original no se modifica.</p>'
         + '<form class="moodle-form" action="/moodle/analizar" method="post" enctype="multipart/form-data">'
         + '<div class="moodle-field"><label for="moodle-matrix">Matriz CSV o XLSX</label>'
-        + '<input id="moodle-matrix" name="matriz_archivo" type="file" accept=".csv,.xlsx" required>'
+        + '<label class="moodle-file-drop" data-moodle-drop for="moodle-matrix">' + icon("subir")
+        + '<strong>Selecciona o arrastra la matriz</strong><small>Archivo .csv o .xlsx</small><span class="boton">Seleccionar archivo</span>'
+        + '<input id="moodle-matrix" name="matriz_archivo" type="file" accept=".csv,.xlsx" required></label>'
+        + '<div class="moodle-file-ready" id="moodle-ready-matrix" hidden><span class="icono-tile chico">' + icon("hoja") + '</span><span></span><button type="button" data-moodle-clear="moodle-matrix" aria-label="Quitar matriz">×</button></div>'
         + '<span class="moodle-help">Se usa la primera hoja. Columnas necesarias: Semana correspondiente, Unidad, Nombre del recurso, Categoría, Tipo de recurso y Enlace.</span></div>'
         + '<div class="moodle-field"><label for="moodle-zip">ZIP de recursos</label>'
-        + '<input id="moodle-zip" name="recursos_zip" type="file" accept=".zip" required>'
+        + '<label class="moodle-file-drop" data-moodle-drop for="moodle-zip">' + icon("subir")
+        + '<strong>Selecciona o arrastra el ZIP</strong><small>Un archivo .zip con los recursos</small><span class="boton">Seleccionar archivo</span>'
+        + '<input id="moodle-zip" name="recursos_zip" type="file" accept=".zip" required></label>'
+        + '<div class="moodle-file-ready" id="moodle-ready-zip" hidden><span class="icono-tile chico">' + icon("zip") + '</span><span></span><button type="button" data-moodle-clear="moodle-zip" aria-label="Quitar ZIP">×</button></div>'
         + '<span class="moodle-help">Solo se usan los PDF y H5P. Cada archivo se empareja por su nombre con el «Nombre del recurso» de la matriz.</span></div>'
         + '<div class="moodle-field full"><label for="moodle-course">Enlace del curso</label>'
         + '<input id="moodle-course" name="course_url" type="url" placeholder="https://prizma.americana.edu.co/course/view.php?id=…" required>'
         + '<span class="moodle-help">Se publican automáticamente: PDF (OVI), Recurso H5P, Infografía, Video interactivo (avatar) y Reto evaluativo.</span></div>'
         + '<div class="moodle-form-actions"><button class="boton grande" type="submit">'
-        + icon("ver") + 'Generar vista previa</button></div></form></section>'
+        + icon("ver") + 'Generar vista previa</button></div></form>'
+        + '<script>(function(){document.querySelectorAll("[data-moodle-drop]").forEach(function(z){var i=document.getElementById(z.htmlFor),r=document.getElementById("moodle-ready-"+(i.id==="moodle-matrix"?"matrix":"zip"));function show(){if(!i.files||!i.files[0]){r.hidden=true;return}r.querySelector("span:nth-child(2)").textContent=i.files[0].name+" · "+Math.max(1,Math.round(i.files[0].size/1024))+" KB";r.hidden=false}i.addEventListener("change",show);["dragenter","dragover"].forEach(function(e){z.addEventListener(e,function(v){v.preventDefault();z.classList.add("dragover")})});["dragleave","drop"].forEach(function(e){z.addEventListener(e,function(v){v.preventDefault();z.classList.remove("dragover")})});z.addEventListener("drop",function(e){if(e.dataTransfer.files.length){var d=new DataTransfer();d.items.add(e.dataTransfer.files[0]);i.files=d.files;i.dispatchEvent(new Event("change"))}})});document.querySelectorAll("[data-moodle-clear]").forEach(function(b){b.addEventListener("click",function(){var i=document.getElementById(b.dataset.moodleClear);i.value="";i.dispatchEvent(new Event("change"))})})})()</script></section>'
     )
 
 
-_PROBLEM_STATUSES = {"missing", "ambiguous", "extension-mismatch"}
+def _label_info_section():
+    return (
+        '<section class="panel moodle-label-info"><div class="moodle-label-content"><p>Elige el tipo de etiqueta. La plantilla HTML se selecciona internamente; al cargar la imagen se inserta automáticamente en <code>src</code>. La imagen queda incrustada como Data URL; no se sube a Moodle ni a un servidor.</p>'
+        + '<div class="moodle-label-cards">'
+        + '<article class="moodle-label-card" data-label-card="banner"><h3>Banners imágenes</h3><p>Arrastra o selecciona la imagen para generar el código del banner.</p>'
+        + '<label class="moodle-label-file" data-label-drop for="moodle-label-image-banner">' + icon("subir") + '<strong>Arrastra la imagen aquí</strong><small>o haz clic para seleccionarla · máx. 5 MB</small><span class="boton secundario moodle-label-file-button">Seleccionar imagen</span><span class="moodle-label-file-name" data-label-filename>Ninguna imagen seleccionada</span><input id="moodle-label-image-banner" data-label-image-kind="banner" type="file" accept="image/png,image/jpeg,image/gif,image/webp"></label></article>'
+        + '<article class="moodle-label-card" data-label-card="infografia"><h3>Infografía</h3><p>Arrastra o selecciona la imagen de la infografía.</p>'
+        + '<label class="moodle-label-file" data-label-drop for="moodle-label-image-infografia">' + icon("subir") + '<strong>Arrastra la imagen aquí</strong><small>o haz clic para seleccionarla · máx. 5 MB</small><span class="boton secundario moodle-label-file-button">Seleccionar imagen</span><span class="moodle-label-file-name" data-label-filename>Ninguna imagen seleccionada</span><input id="moodle-label-image-infografia" data-label-image-kind="infografia" type="file" accept="image/png,image/jpeg,image/gif,image/webp"></label></article>'
+        + '<article class="moodle-label-card" data-label-card="video"><h3>Videos</h3><p>Pega el enlace del video para insertarlo en el código fuente.</p>'
+        + '<label for="moodle-label-video-url">Enlace del video<input id="moodle-label-video-url" type="url" placeholder="https://…" autocomplete="url"></label>'
+        + '<button class="boton secundario" id="moodle-label-generate-video" type="button">Generar HTML de video</button></article></div>'
+        + '<p class="moodle-label-message" id="moodle-label-message" aria-live="polite">Elige una tarjeta: al cargar la imagen el código se genera automáticamente.</p>'
+        + '<img class="moodle-label-preview" id="moodle-label-preview" alt="Vista previa de la imagen" hidden>'
+        + '<div class="moodle-label-output"><h3>HTML generado</h3><p class="moodle-label-code-note">El código completo se copia con el botón. El <code>src</code> queda largo porque contiene la imagen.</p>'
+        + '<details class="moodle-label-code-details"><summary>Ver HTML completo</summary><textarea class="moodle-label-code" id="moodle-label-code" readonly aria-label="HTML generado" placeholder="El código aparecerá aquí."></textarea></details>'
+        + '<div class="moodle-label-actions"><button class="boton" id="moodle-label-copy" type="button" disabled>' + icon("copiar") + 'Copiar HTML</button>'
+        + '<button class="boton secundario" id="moodle-label-download" type="button" disabled>' + icon("descargar") + 'Descargar .html</button></div></div></section>'
+    )
+
+
+_JS_LABEL_INFO = r"""
+(function(){
+  var imageInputs=Array.prototype.slice.call(document.querySelectorAll('[data-label-image-kind]'));if(!imageInputs.length)return;
+  var videoUrl=document.getElementById('moodle-label-video-url'),videoButton=document.getElementById('moodle-label-generate-video');
+  var output=document.getElementById('moodle-label-code'),preview=document.getElementById('moodle-label-preview');
+  var message=document.getElementById('moodle-label-message'),copy=document.getElementById('moodle-label-copy'),download=document.getElementById('moodle-label-download');
+  function escapeAttr(value){return value.replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;').replace(/>/g,'&gt;');}
+  function template(type,src){
+    if(type==='banner')return '<p><img class="img-fluid align-top" role="presentation" src="'+src+'" alt="" width="2780" height="386"></p>';
+    if(type==='infografia')return '<p><img class="img-fluid align-top" style="display: block; margin-left: auto; margin-right: auto;" role="presentation" src="'+src+'" alt="" width="720" height="1015"></p>';
+    return '<p dir="ltr" style="text-align: left;">&nbsp;&nbsp;&nbsp;<video width="800" height="800" controls="true"><source src="'+src+'"></video></p>';
+  }
+  function activate(type){document.querySelectorAll('[data-label-card]').forEach(function(card){card.classList.toggle('activa',card.dataset.labelCard===type);});}
+  function setOutput(code,text,imageData){output.value=code||'';message.textContent=text;preview.hidden=!imageData;if(imageData)preview.src=imageData;else preview.removeAttribute('src');var ready=!!code;copy.disabled=!ready;download.disabled=!ready;
+  }
+  function readImage(file,input,type){activate(type);if(!file){setOutput('','Selecciona una imagen para generar el HTML.','');return;}
+    if(!/^image\/(png|jpeg|gif|webp)$/.test(file.type)){input.value='';var invalidName=input.closest('[data-label-drop]').querySelector('[data-label-filename]');if(invalidName)invalidName.textContent='Ninguna imagen seleccionada';setOutput('','Elige una imagen PNG, JPG, GIF o WebP.','');return;}
+    if(file.size>5*1024*1024){input.value='';var largeName=input.closest('[data-label-drop]').querySelector('[data-label-filename]');if(largeName)largeName.textContent='Ninguna imagen seleccionada';setOutput('','La imagen supera el límite de 5 MB.','');return;}
+    var reader=new FileReader();reader.onload=function(){var data=String(reader.result||'');setOutput(template(type,data),'HTML de '+(type==='banner'?'banner':'infografía')+' listo; la imagen quedó insertada en src.',data);};reader.onerror=function(){setOutput('','No se pudo leer la imagen.','');};reader.readAsDataURL(file);
+  }
+  imageInputs.forEach(function(input){var drop=input.closest('[data-label-drop]'),type=input.dataset.labelImageKind,name=drop.querySelector('[data-label-filename]');input.addEventListener('change',function(){var file=input.files&&input.files[0];if(name)name.textContent=file?file.name:'Ninguna imagen seleccionada';readImage(file,input,type);});
+    ['dragenter','dragover'].forEach(function(name){drop.addEventListener(name,function(event){event.preventDefault();event.stopPropagation();drop.classList.add('dragover');});});
+    ['dragleave','drop'].forEach(function(name){drop.addEventListener(name,function(event){event.preventDefault();event.stopPropagation();drop.classList.remove('dragover');});});
+    drop.addEventListener('drop',function(event){var file=event.dataTransfer&&event.dataTransfer.files&&event.dataTransfer.files[0];if(file)readImage(file,input,type);});
+  });
+  videoButton.addEventListener('click',function(){activate('video');var value=videoUrl.value.trim(),valid=false;try{var parsed=new URL(value);valid=parsed.protocol==='https:'||parsed.protocol==='http:';}catch(_){}if(!valid){setOutput('','Pega un enlace HTTP o HTTPS del video.','');return;}setOutput(template('video',escapeAttr(value)),'HTML de video listo para copiar.','');});
+  copy.addEventListener('click',async function(){try{await navigator.clipboard.writeText(output.value);message.textContent='HTML copiado.';}catch(_){output.focus();output.select();document.execCommand('copy');message.textContent='HTML copiado.';}});
+  download.addEventListener('click',function(){var blob=new Blob([output.value],{type:'text/html;charset=utf-8'});var url=URL.createObjectURL(blob);var a=document.createElement('a');a.href=url;a.download='etiqueta-moodle.html';a.click();URL.revokeObjectURL(url);});
+  setOutput('','Elige una tarjeta: al cargar la imagen el código se genera automáticamente.','');
+})();
+"""
+
+
+_PROBLEM_STATUSES = {"missing", "ambiguous", "extension-mismatch", "title-review", "invalid-file"}
 
 
 def _ordered_entries(job):
@@ -191,13 +260,15 @@ def _row_detail(entry):
     extension = destination.get("extension") or ""
     candidates = [os.path.basename(item) for item in entry.get("candidates") or []]
     if status == "matched":
-        return _e(os.path.basename(entry.get("path") or ""))
+        return _e(entry.get("manual_filename") or os.path.basename(entry.get("path") or ""))
     if status == "missing":
         return '<span class="moodle-why">Ningún ' + _e(extension or "archivo") + ' del ZIP se llama «' + _e(entry.get("title")) + '»</span>'
     if status == "ambiguous":
         return '<span class="moodle-why">Coinciden ' + str(len(candidates)) + ' archivos: ' + _e(", ".join(candidates[:4])) + ('…' if len(candidates) > 4 else '') + '</span>'
     if status == "extension-mismatch":
         return '<span class="moodle-why">Se encontró ' + _e(", ".join(candidates[:2])) + ', pero este recurso necesita ' + _e(extension) + '</span>'
+    if status == "title-review":
+        return '<span class="moodle-why">' + _e((entry.get("h5p_preview") or {}).get("detail") or "El título del H5P necesita revisión.") + '</span>'
     if status == "unsupported":
         return '<span class="moodle-why">«' + _e(entry.get("resourceType")) + '» no tiene destino automático</span>'
     return "—"
@@ -220,12 +291,40 @@ def _item(entry, order, locked):
         check = '<span class="moodle-nocheck" title="Solo se pueden publicar los recursos listos">—</span>'
         badge = '<span class="badge ' + tone + '" title="' + _e(help_text) + '">' + _e(label) + '</span>'
     search = " ".join(str(entry.get(key) or "") for key in ("week", "title", "resourceType", "path"))
+    h5p_preview = entry.get("h5p_preview") or {}
+    h5p_markup = ""
+    if h5p_preview:
+        h5p_status = h5p_preview.get("status")
+        if h5p_status == "match":
+            preview_badge = '<span class="badge badge-verde">Título coincide</span>'
+        elif h5p_status == "no-cover":
+            preview_badge = '<span class="badge badge-ambar">Sin título verificable</span>'
+        else:
+            preview_badge = '<span class="badge badge-rojo">Título del contenido distinto</span>'
+        visible_titles = " · ".join(str(title) for title in h5p_preview.get("visible_titles") or [])
+        h5p_markup = (
+            '<span class="moodle-h5p-check">' + preview_badge
+            + '<span><strong>Título H5P:</strong> ' + _e(h5p_preview.get("package_title") or "Sin título interno")
+            + '</span><span>' + _e(h5p_preview.get("detail")) + '</span>'
+            + ('<span><strong>Títulos dentro del contenido:</strong> ' + _e(visible_titles) + '</span>' if visible_titles else '')
+            + '</span>'
+        )
+    manual_markup = ""
+    destination = entry.get("destination") or {}
+    if status != "matched" and destination.get("extension") in {".pdf", ".h5p"}:
+        extension = destination["extension"]
+        manual_markup = (
+            '<span class="moodle-manual-upload"><label>Adjuntar archivo para esta fila '
+            '<input type="file" accept="' + extension + '" data-manual-resource data-entry-key="'
+            + _e(entry.get("key")) + '"></label><button type="button" class="boton secundario pequeno" data-manual-attach>'
+            'Usar este archivo</button></span>'
+        )
     return (
         '<li class="moodle-item' + (' problema' if status in _PROBLEM_STATUSES else '') + '" data-moodle-row data-status="' + _e(status)
         + '" data-search="' + _e(search.lower()) + '">' + check
         + '<div class="moodle-item-text"><strong>' + _e(entry.get("title")) + '</strong>'
         + '<small><span class="badge ' + _KIND_BADGES.get(kind, "badge-gris") + '">' + _e(_KIND_LABELS.get(kind, kind)) + '</span> '
-        + _row_detail(entry) + '</small></div>' + badge + '</li>'
+        + _row_detail(entry) + '</small>' + h5p_markup + manual_markup + '</div>' + badge + '</li>'
     )
 
 
@@ -605,6 +704,14 @@ _JS_MOODLE = """
   document.querySelectorAll('[data-sel-kind],[data-sel-week]').forEach(function(input){input.addEventListener('change',applyGroups);});
   document.querySelectorAll('[data-moodle-select]').forEach(function(button){button.addEventListener('click',function(){var on=button.dataset.moodleSelect==='all';document.querySelectorAll('[data-sel-kind],[data-sel-week]').forEach(function(input){if(!input.disabled)input.checked=on;});applyGroups();});});
   boxes().forEach(function(box){box.addEventListener('change',refreshCount);});
+  document.querySelectorAll('[data-manual-attach]').forEach(function(button){button.addEventListener('click',async function(){
+    var row=button.closest('[data-moodle-row]');var input=row&&row.querySelector('[data-manual-resource]');
+    if(!input||!input.files||!input.files[0]){window.alert('Selecciona primero un archivo para esta fila.');return;}
+    var data=new FormData();data.append('entry_key',input.dataset.entryKey);data.append('resource_file',input.files[0]);button.disabled=true;
+    try{var response=await fetch(form.action.replace('/publicar','/recurso-manual'),{method:'POST',body:data,headers:{'Accept':'application/json'}});var result=await response.json();if(!response.ok){window.alert(result.error||'No se pudo adjuntar el archivo.');}else{window.location.reload();}}
+    catch(_){window.alert('No se pudo contactar con Auto Prizma.');}
+    finally{button.disabled=false;}
+  });});
   if(form){form.addEventListener('submit',function(event){
     var mode=event.submitter&&event.submitter.value;var count=boxes().filter(function(box){return box.checked;}).length;
     if(!count){event.preventDefault();window.alert('Marca al menos un recurso listo para publicar.');return;}
@@ -691,9 +798,7 @@ _JS_MOODLE = """
 def render_moodle_page(job=None, *, error="", local=True, show_preview=False):
     content = _job_view(job, error=error, local=local, show_preview=show_preview) if job else (
         '<div class="moodle-page">' + _header()
-        + ('<div class="aviso info moodle-note">' + icon("info") + '<div><strong>El cargue se ejecuta en tu equipo</strong>'
-           + '<p>Abre Auto Prizma desde <code>http://127.0.0.1:8000</code> para que Chromium pueda mostrarse aquí e iniciar sesión manualmente en Prizma.</p></div></div>'
-           + _upload_form(error) if local else
+        + (_upload_form(error) if local else
            '<div class="aviso ambar" role="status">' + icon("info") + '<div><strong>Este apartado solo está disponible desde una instancia local.</strong>'
            + '<p>Abre Auto Prizma en el equipo donde se abrirá Chromium: <code>http://127.0.0.1:8000</code>.</p></div></div>')
         + '</div>'
@@ -704,4 +809,24 @@ def render_moodle_page(job=None, *, error="", local=True, show_preview=False):
         active="moodle",
         page_css=_CSS_MOODLE,
         page_js=_JS_MOODLE.replace("__KIND_LABELS__", json.dumps(_KIND_LABELS, ensure_ascii=False)) if job else "",
+    )
+
+
+def render_moodle_labels_page(*, local=True):
+    if local:
+        content = (
+            '<div class="moodle-page"><header class="moodle-heading"><div class="icono-tile">'
+            + icon("codigo") + '</div><div><h1>Información de etiquetas</h1>'
+            + '<p>Prepara el HTML de banners, infografías y videos para usarlo en las etiquetas del curso.</p></div></header>'
+            + _label_info_section() + '</div>'
+        )
+    else:
+        content = (
+            '<div class="moodle-page"><div class="aviso ambar" role="status">' + icon("info")
+            + '<div><strong>Esta herramienta solo está disponible desde una instancia local.</strong>'
+            + '<p>Abre Auto Prizma desde <code>http://127.0.0.1:8000</code>.</p></div></div></div>'
+        )
+    return render_page(
+        "Etiquetas Moodle", content, active="moodle-etiquetas",
+        page_css=_CSS_MOODLE, page_js=_JS_LABEL_INFO if local else "",
     )

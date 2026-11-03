@@ -10,7 +10,7 @@ from auto_prizma.evaluative_tests.parser import parse_docx_bytes
 
 
 def _session_client() -> TestClient:
-    client = TestClient(app)
+    client = TestClient(app, client=("127.0.0.1", 50000))
     client.cookies.set("ap_sesion", _firmar_sesion("adminlocal"))
     return client
 
@@ -33,6 +33,8 @@ def test_tests_page_is_available_to_authenticated_user():
     assert response.status_code == 200
     assert "Nuevo Test" in response.text
     assert "Asistente" in response.text
+    assert '<header class="encabezado workspace-page-heading">' in response.text
+    assert '<span class="icono-tile grande">' in response.text
 
 
 def test_analyze_docx_redirects_to_review_with_job_id():
@@ -67,19 +69,14 @@ def test_review_and_download_expose_parsed_test_without_prizma_side_effects():
     assert b"Prueba de interfaz" in download.content
 
 
-def test_analyze_google_doc_uses_configured_loader():
-    app.state.test_google_loader = lambda url, user: (_docx_fixture(), "google.docx")
-    try:
-        response = _session_client().post(
-            "/tests/analizar",
-            data={"google_doc_url": "https://docs.google.com/document/d/example/edit"},
-            follow_redirects=False,
-        )
-    finally:
-        del app.state.test_google_loader
+def test_analyze_rejects_document_links_and_requires_docx():
+    response = _session_client().post(
+        "/tests/analizar",
+        data={"google_doc_url": "https://docs.google.com/document/d/example/edit"},
+    )
 
-    assert response.status_code == 303
-    assert response.headers["location"].endswith("/revision")
+    assert response.status_code == 400
+    assert "Selecciona un archivo Word" in response.text
 
 
 def test_save_review_persists_edited_title_and_prompt():
@@ -103,11 +100,11 @@ def test_save_review_persists_edited_title_and_prompt():
     assert b"Pregunta corregida." in download.content
 
 
-def test_tests_page_includes_dual_mode_and_help_panel():
+def test_tests_page_only_accepts_docx_and_includes_help_panel():
     response = _session_client().get("/tests")
     assert response.status_code == 200
-    assert "Por archivo" in response.text
-    assert "Por link" in response.text
+    assert "Google Docs" not in response.text
+    assert 'name="archivo_docx"' in response.text
     assert "¿Cómo funciona?" in response.text
     assert "dropzone" in response.text
 
@@ -142,4 +139,3 @@ def test_review_page_highlights_erroneous_question_with_alert_and_link():
     assert "Corrección requerida en Pregunta 1" in review.text
     assert "href=\"#pregunta-0-0-0\"" in review.text
     assert "Requiere atención" in review.text
-

@@ -9,7 +9,7 @@ import threading
 
 
 def _session_client() -> TestClient:
-    client = TestClient(app)
+    client = TestClient(app, client=("127.0.0.1", 50000))
     client.cookies.set("ap_sesion", _firmar_sesion("adminlocal"))
     return client
 
@@ -34,6 +34,16 @@ def test_parsear_datos_academicos_espacios():
     assert res["pensum"] == "PEN2024"
     assert res["codigo_asignatura"] == "MAC001"
     assert res["asignatura"] == "Macroeconomía Aplicada"
+
+
+def test_parsear_fila_academica_del_usuario():
+    res = _parsear_datos_academicos("V1130\t11301\t30S01\tCOMPETENCIAS MATEMÁTICAS I")
+    assert res == {
+        "programa": "V1130",
+        "pensum": "11301",
+        "codigo_asignatura": "30S01",
+        "asignatura": "COMPETENCIAS MATEMÁTICAS I",
+    }
 
 
 def test_parsear_datos_academicos_guiones():
@@ -62,7 +72,7 @@ def test_parsear_datos_academicos_invalido():
 
 def test_pagina_inicio_contiene_test_evaluativo():
     client = _session_client()
-    response = client.get("/")
+    response = client.get("/prizma")
     assert response.status_code == 200
     html = response.text
     # Debe contener la tarjeta de Test Evaluativo
@@ -71,10 +81,11 @@ def test_pagina_inicio_contiene_test_evaluativo():
     assert '<input type="checkbox" name="test_evaluativo" value="1" id="chk-test">' in html
     # Debe contener el bloque de test
     assert 'id="bloque-test"' in html
-    assert 'id="test-datos-academicos"' in html
-    assert 'id="test-semestre"' in html
+    assert 'id="test-datos-academicos"' not in html
+    assert 'name="test_semestre"' not in html
     assert 'id="archivo-test-docx"' in html
-    assert 'id="test-google-doc-url"' in html
+    assert "Google Docs" not in html
+    assert 'name="test_archivo_docx"' in html
 
 
 def test_analizar_solo_test_flujo_exclusivo():
@@ -86,9 +97,6 @@ def test_analizar_solo_test_flujo_exclusivo():
         "/analizar",
         data={
             "test_evaluativo": "1",
-            "test_datos_academicos": "ECO01 PEN2024 MAC101 Macroeconomía I",
-            "test_semestre": "3",
-            "modo_test": "archivo",
         },
         files={
             "test_archivo_docx": ("test_eval.docx", BytesIO(doc_bytes), "application/vnd.openxmlformats-officedocument.wordprocessingml.document"),
@@ -102,15 +110,19 @@ def test_analizar_solo_test_flujo_exclusivo():
     assert location.startswith("/tests/")
     assert location.endswith("/revision")
 
-    # Verificar que los datos académicos quedaron registrados
+    # La línea académica se ingresa en la pantalla de revisión, junto al nivel.
     job_id = location.split("/")[2]
     assert job_id in _JOBS
-    cascada = _JOBS[job_id]["cascada_datos"]
-    assert cascada["programa"] == "ECO01"
-    assert cascada["pensum"] == "PEN2024"
-    assert cascada["codigo_asignatura"] == "MAC101"
-    assert cascada["asignatura"] == "Macroeconomía I"
-    assert cascada["nivel"] == "3"
+    revision = client.get(location)
+    assert 'name="linea_academica"' in revision.text
+    assert 'placeholder="V1130 11301 30S01 COMPETENCIAS MATEMÁTICAS I"' in revision.text
+    assert 'name="cascada_facultad"' in revision.text
+    assert 'name="cascada_nivel"' in revision.text
+    assert 'name="cascada_programa"' not in revision.text
+    assert 'name="cascada_pensum"' not in revision.text
+    assert 'name="cascada_asignatura"' not in revision.text
+    assert 'name="cascada_semana"' not in revision.text
+    assert 'name="cascada_corte"' not in revision.text
 
 
 def test_seleccionar_asignatura_endpoint():
@@ -129,13 +141,14 @@ def test_seleccionar_asignatura_endpoint():
 
     resp = client.post(
         f"/tests/{job_id}/seleccionar-asignatura",
-        data={"asignatura": "Macroeconomía I (MAC101)"},
+        data={"asignatura": "Macroeconomía I (MAC101)", "selector": "Programa"},
     )
     assert resp.status_code == 200
     data = resp.json()
     assert data["ok"] is True
     assert data["asignatura"] == "Macroeconomía I (MAC101)"
     assert sync_obj["seleccion"]["asignatura"] == "Macroeconomía I (MAC101)"
+    assert sync_obj["seleccion"]["campo"] == "Programa"
     assert sync_obj["event"].is_set()
 
 
@@ -176,4 +189,6 @@ def test_facultad_opcional_en_automatizacion_y_revision():
     assert resp_rev.status_code == 200
     assert "Facultad" in resp_rev.text
     assert "Opcional" in resp_rev.text
-
+    assert 'name="cascada_nivel"' in resp_rev.text
+    assert 'name="cascada_semana"' not in resp_rev.text
+    assert 'name="cascada_corte"' not in resp_rev.text

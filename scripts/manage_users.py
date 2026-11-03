@@ -22,7 +22,6 @@ import sys
 # agregando la carpeta del proyecto al path de imports.
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from auto_prizma.integrations.google import oauth as google_oauth  # noqa: E402
 from auto_prizma.services import auth as sesiones  # noqa: E402
 
 
@@ -61,17 +60,15 @@ def listar():
         return
 
     print()
-    print(f"{'USUARIO':<24} {'NOMBRE':<26} {'ESTADO':<10} TOKEN GOOGLE")
-    print("-" * 78)
+    print(f"{'USUARIO':<24} {'NOMBRE':<26} ESTADO")
+    print("-" * 62)
 
     for clave in sorted(usuarios):
         registro = usuarios[clave]
         estado = "activo" if registro.get("activo", True) else "desactivado"
-        tiene_token = os.path.isfile(google_oauth._ruta_token_google(clave))
-
         print(
             f"{clave:<24} {str(registro.get('nombre') or ''):<26} "
-            f"{estado:<10} {'si' if tiene_token else 'no'}"
+            f"{estado}"
         )
 
     print()
@@ -152,12 +149,6 @@ def borrar():
 
         usuarios.pop(usuario, None)
         sesiones._guardar_usuarios(usuarios)
-
-    ruta_token = google_oauth._ruta_token_google(usuario)
-
-    if os.path.isfile(ruta_token):
-        os.remove(ruta_token)
-        print("Tambien se borro su token de Google.")
 
     print(f"Usuario '{usuario}' borrado.")
     print(

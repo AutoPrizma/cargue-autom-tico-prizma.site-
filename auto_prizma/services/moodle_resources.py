@@ -1,6 +1,7 @@
 """Analisis, almacenamiento temporal y estado de cargues Moodle."""
 
 import csv
+from difflib import SequenceMatcher
 import hashlib
 import io
 import os
@@ -19,6 +20,12 @@ from openpyxl.utils.exceptions import InvalidFileException
 
 from auto_prizma.core.config import DATA_DIR, UPLOADS_DIR
 from auto_prizma.core.storage import read_json, write_json_atomic
+from auto_prizma.auditor.procesar import clave as h5p_title_key
+from auto_prizma.auditor.procesar import (
+    leer_titulo_h5p,
+    titulos_principales_h5p,
+    titulos_visibles_h5p,
+)
 from auto_prizma.domain.moodle_resources import (
     BLOCK_LABELS,
     destination_for,
@@ -35,6 +42,7 @@ MOODLE_JOBS_LOCK = threading.RLock()
 MOODLE_WORKERS = {}
 MOODLE_WORKERS_LOCK = threading.Lock()
 MAX_ARCHIVE_UNPACKED_BYTES = 4 * 1024 * 1024 * 1024
+MAX_MANUAL_RESOURCE_BYTES = 200 * 1024 * 1024
 REQUIRED_HEADERS = (
     "Semana correspondiente",
     "Unidad",
@@ -175,6 +183,7 @@ def validate_course_url(value):
 
     url = str(value or "").strip()
     parsed = urlparse(url)
+    course_id = parse_qs(parsed.query, keep_blank_values=True).get("id", [""])[0].strip()
     if (
         parsed.scheme != "https"
         or parsed.hostname != "prizma.americana.edu.co"
@@ -182,9 +191,12 @@ def validate_course_url(value):
         or parsed.password
         or parsed.port not in (None, 443)
         or parsed.path != "/course/view.php"
-        or not parse_qs(parsed.query).get("id", [""])[0]
+        or not course_id.isdigit()
     ):
-        raise ValueError("Ingresa un enlace HTTPS válido de un curso de Prizma.")
+        raise ValueError(
+            "Ingresa el enlace HTTPS del curso de Prizma con su ID numérico, "
+            "por ejemplo: https://prizma.americana.edu.co/course/view.php?id=695."
+        )
     return url
 
 
@@ -217,7 +229,7 @@ def create_moodle_preview(owner, matrix_filename, matrix_bytes, zip_filename, zi
     for row in rows:
         destination = destination_for(row)
         match = resolve_resource(row, file_index)
-        entries.append({
+        entry = {
             "key": (
                 f"{row['sourceRow']}:{unicodedata.normalize('NFC', row['title'])}:"
                 f"{destination['block'] if destination else 'unsupported'}"
@@ -226,7 +238,22 @@ def create_moodle_preview(owner, matrix_filename, matrix_bytes, zip_filename, zi
             "kind": resource_kind(row),
             "destination": destination,
             **match,
-        })
+        }
+        if entry["status"] == "matched" and str(entry.get("path") or "").lower().endswith(".h5p"):
+            entry["h5p_preview"] = inspect_h5p_title(entry["path"], row["title"])
+            if entry["h5p_preview"]["status"] != "match":
+                entry["status"] = "title-review"
+        if entry["status"] == "matched":
+            path = str(entry.get("path") or "")
+            if not path or not os.path.isfile(path) or os.path.getsize(path) == 0:
+                entry["status"] = "invalid-file"
+                entry["detail"] = "El archivo del recurso está vacío o no se puede leer."
+            elif path.lower().endswith(".pdf"):
+                with open(path, "rb") as stream:
+                    if not stream.read(5).startswith(b"%PDF-"):
+                        entry["status"] = "invalid-file"
+                        entry["detail"] = "El archivo no contiene una cabecera PDF válida."
+        entries.append(entry)
     summary = {}
     for entry in entries:
         summary[entry["status"]] = summary.get(entry["status"], 0) + 1
@@ -261,6 +288,98 @@ def create_moodle_preview(owner, matrix_filename, matrix_bytes, zip_filename, zi
     with MOODLE_JOBS_LOCK:
         MOODLE_JOBS[job_id] = job
     return job
+
+
+def inspect_h5p_title(resource_path, expected_title):
+    """Requiere un título del contenido igual al de matriz tras normalizar texto."""
+    package_title, read_error = leer_titulo_h5p(resource_path)
+    package_title = str(package_title or "").strip()
+    primary_titles = titulos_principales_h5p(resource_path)
+    visible_titles = titulos_visibles_h5p(resource_path)
+    expected_key = h5p_title_key(expected_title)
+    package_similarity = (
+        SequenceMatcher(None, h5p_title_key(package_title), expected_key).ratio()
+        if h5p_title_key(package_title) and expected_key else 0.0
+    )
+    cover_match = next(
+        (title for title in primary_titles if h5p_title_key(title) == expected_key),
+        "",
+    )
+    if read_error:
+        status = "error"
+        detail = "No se pudo leer el título interno del paquete: " + str(read_error) + "."
+    elif cover_match:
+        status = "match"
+        detail = (
+            "El título detectado dentro del contenido coincide con el de la matriz "
+            "(ignorando mayúsculas, tildes y signos)."
+        )
+    elif not primary_titles:
+        status = "no-cover"
+        detail = (
+            "No se detectó un título principal en el contenido que permita verificar la portada. "
+            "El título del paquete por sí solo no confirma que la portada coincida."
+        )
+    else:
+        status = "cover-mismatch"
+        titulos = " · ".join(primary_titles[:3])
+        detail = (
+            "El título detectado dentro del contenido no coincide exactamente con el de la matriz «"
+            + str(expected_title or "") + "». Título(s) encontrado(s): " + titulos + "."
+        )
+    return {
+        "status": status,
+        "package_title": package_title,
+        "visible_titles": visible_titles,
+        "primary_titles": primary_titles,
+        "package_similarity": round(package_similarity, 4),
+        "cover_title": cover_match,
+        "detail": detail,
+    }
+
+
+def attach_manual_resource(job, entry_key, filename, content):
+    """Asocia un PDF/H5P adjuntado manualmente a una fila de la vista previa."""
+    entry = next((item for item in job.get("entries", []) if item.get("key") == str(entry_key)), None)
+    if not entry:
+        raise ValueError("No se encontró esa fila de la matriz.")
+    destination = entry.get("destination") or {}
+    expected_extension = str(destination.get("extension") or "").lower()
+    safe_name = os.path.basename(str(filename or "").replace("\\", "/"))
+    extension = os.path.splitext(safe_name)[1].lower()
+    if expected_extension not in {".pdf", ".h5p"}:
+        raise ValueError("Esta fila no admite un archivo PDF o H5P para publicación automática.")
+    if extension != expected_extension:
+        raise ValueError("Esta fila necesita un archivo " + expected_extension + ".")
+    if not content:
+        raise ValueError("El archivo seleccionado está vacío.")
+
+    if extension == ".h5p":
+        try:
+            with zipfile.ZipFile(io.BytesIO(content)) as package:
+                if "h5p.json" not in package.namelist():
+                    raise ValueError("El H5P no contiene su archivo de configuración h5p.json.")
+        except zipfile.BadZipFile as exc:
+            raise ValueError("El archivo H5P seleccionado no es válido.") from exc
+
+    manual_dir = os.path.join(job["job_dir"], "manuales")
+    os.makedirs(manual_dir, exist_ok=True)
+    stored_path = os.path.join(manual_dir, uuid.uuid4().hex + extension)
+    with open(stored_path, "wb") as output:
+        output.write(content)
+    entry["path"] = stored_path
+    entry["candidates"] = [stored_path]
+    entry["status"] = "matched"
+    entry["manual_filename"] = safe_name
+    if extension == ".h5p":
+        entry["h5p_preview"] = inspect_h5p_title(stored_path, entry.get("title"))
+    else:
+        entry.pop("h5p_preview", None)
+    summary = {}
+    for item in job.get("entries", []):
+        summary[item["status"]] = summary.get(item["status"], 0) + 1
+    job["summary"] = summary
+    return entry
 
 
 def get_moodle_job(job_id, owner):

@@ -447,7 +447,6 @@ class PrizmaTestAutomator:
 
                     if txt in variantes_programa_n:
                         coincidencias_exactas.append((opc, txt_raw))
-                        break
 
                     # Coincidencia numérica bidireccional (ej. 3 <-> tres <-> tercero <-> iii)
                     if any(v == txt or re.search(rf"\b{re.escape(v)}\b", txt) for v in variantes_num):
@@ -458,7 +457,26 @@ class PrizmaTestAutomator:
                     elif any(variante and variante in txt for variante in variantes_programa_n):
                         coincidencias_parciales.append((opc, txt_raw))
 
+                def seleccionar_opcion_interactiva(coincidencias):
+                    if not on_opcion_no_encontrada or not coincidencias:
+                        return False
+                    nombres = list(dict.fromkeys(texto for _, texto in coincidencias))
+                    try:
+                        elegida = on_opcion_no_encontrada(nombres, valor_limpio, placeholder)
+                    except TypeError:
+                        elegida = on_opcion_no_encontrada(nombres, valor_limpio)
+                    elegida_n = normalizar_texto(str(elegida or ""))
+                    for opcion, texto in coincidencias:
+                        if normalizar_texto(texto) == elegida_n:
+                            opcion.click(timeout=6000)
+                            page.wait_for_timeout(400)
+                            self._log(f"Campo '{placeholder}' configurado con la opción confirmada '{texto}'.", "ok")
+                            return True
+                    return False
+
                 if coincidencias_exactas:
+                    if len(coincidencias_exactas) > 1 and seleccionar_opcion_interactiva(coincidencias_exactas):
+                        return True
                     coincidencias_exactas[0][0].click(timeout=6000)
                     page.wait_for_timeout(400)
                     self._log(f"Campo '{placeholder}' configurado con '{coincidencias_exactas[0][1]}'.", "ok")
@@ -472,6 +490,10 @@ class PrizmaTestAutomator:
 
                 if len(coincidencias_codigo) > 1:
                     starts = [c for c in coincidencias_codigo if normalizar_texto(c[1]).startswith(valor_n)]
+                    if len(starts) > 1 and seleccionar_opcion_interactiva(starts):
+                        return True
+                    if len(starts) != 1 and seleccionar_opcion_interactiva(coincidencias_codigo):
+                        return True
                     elegida = starts[0] if len(starts) == 1 else coincidencias_codigo[0]
                     elegida[0].click(timeout=6000)
                     page.wait_for_timeout(400)
@@ -491,6 +513,8 @@ class PrizmaTestAutomator:
                         page.wait_for_timeout(400)
                         self._log(f"Campo '{placeholder}' configurado con '{exactas_num[0][1]}'.", "ok")
                         return True
+                    if seleccionar_opcion_interactiva(coincidencias_numericas):
+                        return True
                     elegida_num = coincidencias_numericas[0]
                     elegida_num[0].click(timeout=6000)
                     page.wait_for_timeout(400)
@@ -504,6 +528,8 @@ class PrizmaTestAutomator:
                     return True
 
                 if len(coincidencias_parciales) > 1:
+                    if seleccionar_opcion_interactiva(coincidencias_parciales):
+                        return True
                     snap = self._tomar_captura(page)
                     ejemplos = " | ".join(c[1] for c in coincidencias_parciales[:3])
                     msg_amb = (
@@ -536,7 +562,10 @@ class PrizmaTestAutomator:
 
                 if lista_opciones:
                     self._log(f"Opción '{valor_limpio}' no encontrada en '{placeholder}'. Solicitando selección al usuario entre {len(lista_opciones)} opciones...", "warn")
-                    opcion_elegida = on_opcion_no_encontrada(lista_opciones, valor_limpio)
+                    try:
+                        opcion_elegida = on_opcion_no_encontrada(lista_opciones, valor_limpio, placeholder)
+                    except TypeError:
+                        opcion_elegida = on_opcion_no_encontrada(lista_opciones, valor_limpio)
                     if opcion_elegida and str(opcion_elegida).strip():
                         elegida_str = str(opcion_elegida).strip()
                         self._log(f"Usuario seleccionó: '{elegida_str}'. Aplicando en PRIZMA...", "info")
@@ -1070,7 +1099,7 @@ class PrizmaTestAutomator:
                         for placeholder, valor in cascada_items:
                             if valor:
                                 try:
-                                    cb_fallback = solicitar_asignatura_callback if placeholder == "Asignatura por pensum" else None
+                                    cb_fallback = solicitar_asignatura_callback
                                     self.seleccionar_mui(page, placeholder, valor, on_opcion_no_encontrada=cb_fallback)
                                 except Exception as exc_item:
                                     if placeholder == "Facultad":
@@ -1167,5 +1196,3 @@ class PrizmaTestAutomator:
                     navegador.close()
                 except Exception:
                     pass
-
-
