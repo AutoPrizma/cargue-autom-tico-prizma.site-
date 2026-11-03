@@ -243,7 +243,7 @@ def test_analyze_html_format_marks_interactive_activities_as_html(limpiar_trabaj
     tipos = {a["nombre"]: a["tipo"] for a in resultado["hojas"][0]["actividades"]}
     assert tipos == {"Infografía de costos": "HTML", "Lectura guía": "PDF", "Reto 1": "PDF"}
     assert resultado["hojas"][0]["html"] == 1 and resultado["hojas"][0]["h5p"] == 0
-    assert resultado["zip"] == {"h5p": 0, "pdf": 1, "html": 1, "total": 2}
+    assert resultado["zip"] == {"h5p": 0, "pdf": 1, "html": 1, "webm": 0, "total": 2}
     assert '<span class="badge badge-html">HTML</span>' in respuesta.text
     assert "recurso(s) HTML/PDF detectado(s) en el ZIP" in respuesta.text
 
@@ -257,6 +257,37 @@ def test_analyze_rejects_unknown_resource_format(limpiar_trabajos):
 
     assert "Formato de recurso no válido" in respuesta.text
     assert nuevos == []
+
+
+def test_matrix_analysis_includes_camera_video_and_zip_webm():
+    from auto_prizma.services.matrix_analysis import analizar_excel, analizar_zip
+
+    libro = Workbook()
+    hoja = libro.active
+    hoja.title = "Curso A"
+    hoja["A1"] = "Administración de Empresas"
+    hoja["A2"] = "Contabilidad I"
+    hoja["A4"] = "Semana correspondiente"
+    hoja["C5"] = "1.1"
+    hoja["D5"] = "Introducción a la unidad"
+    hoja["A6"] = 1
+    hoja["D6"] = "Video de bienvenida"
+    hoja["E6"] = "OVI"
+    hoja["F6"] = "Video a cámara"
+    contenido = io.BytesIO()
+    libro.save(contenido)
+
+    hojas = analizar_excel(contenido.getvalue())
+    zip_bytes = io.BytesIO()
+    with zipfile.ZipFile(zip_bytes, "w") as archivo:
+        archivo.writestr("Video_bienvenida.webm", b"webm")
+    resumen_zip = analizar_zip(zip_bytes.getvalue())
+
+    video = hojas[0]["actividades"][0]
+    assert video["tipo"] == "VIDEO_CAMARA"
+    assert video["tema"] == "Introducción a la unidad"
+    assert video["codigo_tema"] == "1.1"
+    assert resumen_zip["webm"] == 1 and resumen_zip["total"] == 1
 
 
 def test_html_file_upload_uses_zip_without_external_resource_validation(limpiar_trabajos):

@@ -630,12 +630,12 @@ def determinar_tipo_archivo(
     ):
         return "PDF"
 
-    # VIDEOS EXCLUIDOS
-    if tipo_n in [
-        "video intro",
-        "video cierre",
-        "video a camara",
-    ]:
+    # Los videos a cámara se cargan en el recurso del Tema, no como actividad.
+    if tipo_n == "video a camara":
+        return "VIDEO_CAMARA"
+
+    # Videos que continúan fuera del cargue automático.
+    if tipo_n in ["video intro", "video cierre"]:
         return None
 
     # OVA SIEMPRE H5P
@@ -772,8 +772,11 @@ def leer_actividades_excel(
         )
 
         # ----------------------------------------------------
-        # ACTIVIDADES
+        # ACTIVIDADES Y TEMAS
         # ----------------------------------------------------
+
+        tema_actual = ""
+        codigo_tema_actual = ""
 
         for fila in range(
             fila_cabecera + 1,
@@ -804,6 +807,22 @@ def leer_actividades_excel(
                 row=fila,
                 column=6,
             ).value
+
+            codigo_tema = hoja.cell(
+                row=fila,
+                column=3,
+            ).value
+
+            codigo_tema_texto = str(codigo_tema or "").strip()
+            if (
+                codigo_tema_texto
+                and re.fullmatch(r"\d+(?:\.\d+)?", codigo_tema_texto)
+                and nombre
+                and not categoria
+            ):
+                tema_actual = str(nombre).strip()
+                codigo_tema_actual = codigo_tema_texto
+                continue
 
             enlace = ""
 
@@ -851,49 +870,52 @@ def leer_actividades_excel(
             if tipo_archivo is None:
                 continue
 
-            actividades.append(
-                {
-                    "fila_excel": fila,
-                    "hoja": nombre_hoja,
-                    "programa": programa,
-                    "curso": curso,
+            if tipo_archivo == "VIDEO_CAMARA" and not tema_actual:
+                continue
 
-                    "semana": (
-                        str(semana).strip()
-                        if semana
-                        else ""
-                    ),
+            actividad_leida = {
+                "fila_excel": fila,
+                "hoja": nombre_hoja,
+                "programa": programa,
+                "curso": curso,
 
-                    "unidad": (
-                        str(unidad).strip()
-                        if unidad
-                        else ""
-                    ),
+                "semana": (
+                    str(semana).strip()
+                    if semana
+                    else ""
+                ),
 
-                    "nombre": str(
-                        nombre
-                    ).strip(),
+                "unidad": (
+                    str(unidad).strip()
+                    if unidad
+                    else ""
+                ),
 
-                    "categoria_prizma":
-                        categoria_prizma,
+                "nombre": str(
+                    nombre
+                ).strip(),
 
-                    "tipo_recurso": (
-                        str(tipo_recurso).strip()
-                        if tipo_recurso
-                        else ""
-                    ),
+                "categoria_prizma": categoria_prizma,
 
-                    "tipo_archivo":
-                        tipo_archivo,
+                "tipo_recurso": (
+                    str(tipo_recurso).strip()
+                    if tipo_recurso
+                    else ""
+                ),
 
-                    "enlace": (
-                        str(enlace).strip()
-                        if enlace
-                        else ""
-                    ),
+                "tipo_archivo": tipo_archivo,
 
-                }
-            )
+                "enlace": (
+                    str(enlace).strip()
+                    if enlace
+                    else ""
+                ),
+
+            }
+            if tipo_archivo == "VIDEO_CAMARA":
+                actividad_leida["tema"] = tema_actual
+                actividad_leida["codigo_tema"] = codigo_tema_actual
+            actividades.append(actividad_leida)
 
     return actividades
 
@@ -929,6 +951,7 @@ def crear_indice_recursos(
             if extension not in [
                 ".h5p",
                 ".pdf",
+                ".webm",
             ] + list(EXTENSIONES_HTML):
                 continue
 
@@ -1146,7 +1169,10 @@ def archivo_parecido_a_actividad(
     Devuelve "" si no hay nada medianamente parecido.
     """
     tipo = str(actividad.get("tipo_archivo") or "").upper()
-    extension = {"H5P": ".h5p", "PDF": ".pdf", "HTML": ".html"}.get(tipo)
+    extension = {
+        "H5P": ".h5p", "PDF": ".pdf", "HTML": ".html",
+        "VIDEO_CAMARA": ".webm",
+    }.get(tipo)
     if not extension:
         return ""
 
@@ -1208,6 +1234,10 @@ def resolver_recurso(
     ] == "HTML":
 
         extension = ".html"
+
+    elif actividad["tipo_archivo"] == "VIDEO_CAMARA":
+
+        extension = ".webm"
 
     else:
 
@@ -1743,6 +1773,7 @@ def entrar_categoria(
         "OVI": "OVI",
         "OVA": "OVA",
         "CHALLENGE": "Retos Evaluativos",
+        "TEMAS": "Tema",
     }
 
     texto_pestana = nombres_pestana.get(
@@ -1764,10 +1795,25 @@ def entrar_categoria(
             pagina
         )
 
-        pestana = pagina.locator(
-            "label.tab",
-            has_text=texto_pestana,
-        ).first
+        if categoria == "TEMAS":
+            pestanas = pagina.locator("label.tab")
+            pestana = None
+            for indice in range(pestanas.count()):
+                candidata = pestanas.nth(indice)
+                try:
+                    nombre = normalizar_texto(candidata.inner_text())
+                    if nombre in {"tema", "temas"} and candidata.is_visible():
+                        pestana = candidata
+                        break
+                except Exception:
+                    continue
+            if pestana is None:
+                return False
+        else:
+            pestana = pagina.locator(
+                "label.tab",
+                has_text=texto_pestana,
+            ).first
 
         pestana.wait_for(
             state="visible",
@@ -3085,6 +3131,7 @@ def abrir_edicion(
 
 def detectar_campo_recurso(
     pagina,
+    tipo_archivo=None,
 ):
 
     archivos = pagina.locator(
@@ -3135,6 +3182,13 @@ def detectar_campo_recurso(
                 "→ RECURSO PRINCIPAL"
             )
 
+            continue
+
+        if tipo_archivo == "VIDEO_CAMARA" and (
+            ".webm" in accept_n or "video/" in accept_n
+        ):
+            candidatos_recurso.append(archivo)
+            print("→ RECURSO DE VIDEO A CÁMARA")
             continue
 
         # Material descargable.
@@ -4032,7 +4086,7 @@ def _cargar_html_en_formulario(pagina, contenido, carpeta_temp, actividad, nombr
     }
 
 
-def _intentar_guardado(pagina, boton_guardar, respuestas, captura):
+def _intentar_guardado(pagina, boton_guardar, respuestas, captura, tipo_guardado="actividad"):
     """Pulsa Guardar y espera el PATCH de la actividad.
 
     Devuelve (respuesta_patch, detalle_clic, error_clic):
@@ -4062,7 +4116,9 @@ def _intentar_guardado(pagina, boton_guardar, respuestas, captura):
 
     try:
         with pagina.expect_response(
-            _es_patch_actividad_response,
+            _es_patch_tema_response
+            if tipo_guardado == "tema"
+            else _es_patch_actividad_response,
             timeout=45000,
         ) as respuesta_info:
             boton_guardar.click(
@@ -4094,6 +4150,7 @@ def _intentar_guardado(pagina, boton_guardar, respuestas, captura):
             pagina,
             respuestas,
             timeout_ms=2000,
+            tipo_guardado=tipo_guardado,
         )
 
     except Exception as error_guardado:
@@ -4117,10 +4174,31 @@ def _es_patch_actividad_response(response):
         return False
 
 
+def _es_patch_tema_response(response):
+    """Identifica la actualización PATCH de un tema de PRIZMA."""
+    try:
+        url = response.url.lower()
+        return (
+            response.request.method.upper() == "PATCH"
+            and any(
+                ruta in url
+                for ruta in (
+                    "/academic/topic",
+                    "/academic/topics",
+                    "/academic/theme",
+                    "/academic/themes",
+                )
+            )
+        )
+    except Exception:
+        return False
+
+
 def esperar_patch(
     pagina,
     respuestas,
     timeout_ms=15000,
+    tipo_guardado="actividad",
 ):
     """Fallback historico sobre el listener global de respuestas."""
 
@@ -4135,9 +4213,13 @@ def esperar_patch(
             ] != "PATCH":
                 continue
 
-            if "/academic/activity/" not in respuesta[
-                "url"
-            ]:
+            url = str(respuesta.get("url") or "").lower()
+            rutas_objetivo = (
+                ("/academic/topic/", "/academic/theme/")
+                if tipo_guardado == "tema"
+                else ("/academic/activity/",)
+            )
+            if not any(ruta in url for ruta in rutas_objetivo):
                 continue
 
             return respuesta
@@ -4621,9 +4703,13 @@ def _cargar_archivo_en_recurso(
     # se vacia el Html antes de guardar y el contenido previo va al reporte.
     html_vaciado = None
 
+    tipo_archivo = str(actividad.get("tipo_archivo") or "").upper()
     if (
-        str(actividad.get("tipo_archivo") or "").upper() == "H5P"
-        or _conflicto_html_h5p_visible(pagina)
+        tipo_archivo == "H5P"
+        or (
+            tipo_archivo != "VIDEO_CAMARA"
+            and _conflicto_html_h5p_visible(pagina)
+        )
     ):
         error_html, html_vaciado = _resolver_campo_html(
             pagina,
@@ -4637,6 +4723,171 @@ def _cargar_archivo_en_recurso(
     return None, html_vaciado
 
 
+def _clave_nombre_tema(valor):
+    """Normaliza el título, omitiendo código inicial y punto final opcionales."""
+    texto = str(valor or "").strip()
+    texto = re.sub(r"^\d+(?:\.\d+)?\s+", "", texto)
+    texto = re.sub(r"\.$", "", texto.rstrip()).rstrip()
+    return normalizar_texto(texto)
+
+
+def _nombre_tema_para_busqueda(valor):
+    """Devuelve el texto de búsqueda sin un punto final de la matriz."""
+    texto = str(valor or "").strip()
+    return re.sub(r"\.$", "", texto).rstrip()
+
+
+def buscar_tema_de_programa(pagina, actividad):
+    """Busca una fila que coincida exactamente en programa y nombre de tema."""
+    buscador = pagina.locator('input[placeholder="Buscar..."]').first
+    nombre_tema = _nombre_tema_para_busqueda(actividad.get("tema"))
+    try:
+        buscador.wait_for(state="visible", timeout=20000)
+        buscador.fill(nombre_tema)
+        pagina.wait_for_timeout(1200)
+    except Exception:
+        return None, "ERROR_BUSCADOR_TEMAS_NO_DISPONIBLE"
+
+    tema_objetivo = _clave_nombre_tema(actividad.get("tema"))
+    programa_objetivo = normalizar_texto(actividad.get("programa"))
+    elementos = pagina.get_by_text(nombre_tema, exact=False)
+    filas = {}
+
+    for indice in range(elementos.count()):
+        try:
+            fila = encontrar_fila_desde_elemento(elementos.nth(indice))
+            if fila is None or not fila.is_visible():
+                continue
+            texto = fila.inner_text()
+            lineas = [linea.strip() for linea in texto.splitlines() if linea.strip()]
+            coincide_tema = any(
+                _clave_nombre_tema(linea) == tema_objetivo
+                for linea in lineas
+            )
+            coincide_programa = any(
+                normalizar_texto(linea) == programa_objetivo
+                for linea in lineas
+            )
+            if coincide_tema and coincide_programa:
+                identificador = obtener_id_temporal_fila(fila)
+                filas[identificador or str(indice)] = fila
+        except Exception:
+            continue
+
+    if not filas:
+        return None, "ERROR_TEMA_PROGRAMA_NO_ENCONTRADO"
+    if len(filas) > 1:
+        return None, "ERROR_TEMA_PROGRAMA_AMBIGUO"
+    return next(iter(filas.values())), None
+
+
+def procesar_video_a_camara(
+    pagina,
+    actividad,
+    indice_recursos,
+    carpeta_temp,
+    respuestas,
+    captura,
+    actividades_curso,
+    estado_navegacion=None,
+):
+    """Carga un .webm en el recurso del tema validando programa y tema."""
+    recurso, error = resolver_recurso(
+        actividad, indice_recursos, carpeta_temp, actividades_curso
+    )
+    if error:
+        return {"ok": False, "error": error, "recurso": ""}
+
+    nombre_recurso = recurso["nombre_original"]
+    if not asegurar_listado(pagina):
+        return {
+            "ok": False,
+            "error": "ERROR_NO_SE_PUDO_VOLVER_AL_LISTADO",
+            "recurso": nombre_recurso,
+        }
+    if not entrar_categoria(pagina, "TEMAS", estado_navegacion):
+        return {
+            "ok": False,
+            "error": "ERROR_ENTRANDO_A_TEMAS",
+            "recurso": nombre_recurso,
+        }
+
+    fila, error = buscar_tema_de_programa(pagina, actividad)
+    if error:
+        return {"ok": False, "error": error, "recurso": nombre_recurso}
+    if not abrir_edicion(pagina, fila):
+        return {
+            "ok": False,
+            "error": "ERROR_ABRIENDO_EDICION_TEMA",
+            "recurso": nombre_recurso,
+        }
+
+    if archivo_visible(pagina, nombre_recurso):
+        cancelar_edicion_segura(pagina)
+        return {"ok": True, "omitido": True, "recurso": nombre_recurso}
+
+    campo = detectar_campo_recurso(pagina, "VIDEO_CAMARA")
+    if campo is None:
+        cancelar_edicion_segura(pagina)
+        return {
+            "ok": False,
+            "error": "ERROR_CAMPO_RECURSO_VIDEO_NO_ENCONTRADO",
+            "recurso": nombre_recurso,
+        }
+
+    error_carga, _ = _cargar_archivo_en_recurso(
+        pagina,
+        campo,
+        recurso["ruta"],
+        nombre_recurso,
+        carpeta_temp,
+        actividad,
+    )
+    if error_carga:
+        return error_carga
+
+    boton_guardar = encontrar_boton_guardar(pagina)
+    if boton_guardar is None:
+        cancelar_edicion_segura(pagina)
+        return {"ok": False, "error": "ERROR_BOTON_GUARDAR", "recurso": nombre_recurso}
+
+    respuesta, detalle_clic, error_clic = _intentar_guardado(
+        pagina, boton_guardar, respuestas, captura, tipo_guardado="tema"
+    )
+    if error_clic is not None:
+        cancelar_edicion_segura(pagina)
+        return {
+            "ok": False,
+            "error": "ERROR_CLIC_GUARDAR_TEMA: " + str(error_clic),
+            "recurso": nombre_recurso,
+        }
+    if respuesta is None:
+        cancelar_edicion_segura(pagina)
+        detalle = detalle_clic or "PRIZMA no confirmó el guardado del tema."
+        return {
+            "ok": False,
+            "error": "ERROR_GUARDADO_TEMA_NO_CONFIRMADO: " + detalle,
+            "recurso": nombre_recurso,
+        }
+    if not 200 <= respuesta["status"] < 300:
+        return {
+            "ok": False,
+            "error": "ERROR_GUARDADO_TEMA_HTTP_" + str(respuesta["status"]),
+            "recurso": nombre_recurso,
+        }
+    if not asegurar_listado(pagina):
+        return {
+            "ok": False,
+            "error": "ERROR_POST_GUARDADO_TEMA_LISTADO",
+            "recurso": nombre_recurso,
+        }
+    return {
+        "ok": True,
+        "recurso": nombre_recurso,
+        "confirmacion": "PATCH",
+    }
+
+
 def procesar_actividad(
     pagina,
     actividad,
@@ -4648,6 +4899,18 @@ def procesar_actividad(
     estado_navegacion=None,
     recurso_manual=None,
 ):
+
+    if str(actividad.get("tipo_archivo") or "").upper() == "VIDEO_CAMARA":
+        return procesar_video_a_camara(
+            pagina,
+            actividad,
+            indice_recursos,
+            carpeta_temp,
+            respuestas,
+            captura,
+            actividades_curso,
+            estado_navegacion,
+        )
 
     print()
     print()
@@ -5881,23 +6144,27 @@ def verificar_actividades_prizma(
 
                     if not entrar_categoria(
                         pagina,
-                        actividad["categoria_prizma"],
+                        (
+                            "TEMAS"
+                            if actividad.get("tipo_archivo") == "VIDEO_CAMARA"
+                            else actividad["categoria_prizma"]
+                        ),
                         estado_navegacion,
                     ):
                         entrada["detalle"] = (
-                            "No se pudo abrir la categoría "
-                            + str(actividad["categoria_prizma"]) + "."
+                            "No se pudo abrir la pestaña de PRIZMA para verificar."
                         )
                     else:
-                        fila, error = buscar_actividad_correcta(
-                            pagina,
-                            actividad,
-                        )
+                        if actividad.get("tipo_archivo") == "VIDEO_CAMARA":
+                            fila, error = buscar_tema_de_programa(pagina, actividad)
+                        else:
+                            fila, error = buscar_actividad_correcta(pagina, actividad)
                         if error:
                             codigo = str(error)
                             if (
                                 "ERROR_ACTIVIDAD_NO_ENCONTRADA" in codigo
                                 or "ERROR_CURSO_SIN_PLANTILLA" in codigo
+                                or "ERROR_TEMA_PROGRAMA_NO_ENCONTRADO" in codigo
                             ):
                                 entrada["verificacion"] = "no_esta"
                             elif "ERROR_ACTIVIDAD_DUPLICADA" in codigo:
@@ -5907,7 +6174,11 @@ def verificar_actividades_prizma(
                             entrada["detalle"] = mensaje_error(codigo)
                         else:
                             entrada["verificacion"] = "existe"
-                            entrada["detalle"] = "Aparece en PRIZMA."
+                            entrada["detalle"] = (
+                                "Tema y programa coinciden en PRIZMA."
+                                if actividad.get("tipo_archivo") == "VIDEO_CAMARA"
+                                else "Aparece en PRIZMA."
+                            )
                             if str(actividad.get("tipo_archivo") or "").upper() == "H5P":
                                 entrada["detalle"] += " " + _inspeccionar_h5p_montado(
                                     pagina, fila, actividad
@@ -7479,6 +7750,7 @@ def ejecutar_cargue(
         print()
         print("H5P -> RECURSO")
         print("PDF -> RECURSO")
+        print("VIDEO A CÁMARA -> TEMA / RECURSO")
         print("MATERIAL DESCARGABLE -> NO TOCAR")
 
         actualizar_estado(

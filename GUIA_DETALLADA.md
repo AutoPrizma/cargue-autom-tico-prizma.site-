@@ -339,18 +339,19 @@ La matriz puede tener varias hojas; cada hoja que tenga la cabecera esperada se 
 | Columna `A` (fila de cabecera) | El texto **Semana correspondiente**, en alguna de las primeras 30 filas. Las actividades empiezan en la fila siguiente. |
 | Columna `A` | Semana |
 | Columna `B` | Unidad |
-| Columna `D` | Nombre de la actividad |
+| Columna `C` | Código del tema en su fila de título (por ejemplo, `1.1`) |
+| Columna `D` | Nombre de la actividad o título del tema |
 | Columna `E` | Categoría: `OVI`, `OVA` o `Challenge` (reto evaluativo). Las filas con otra categoría se ignoran. |
 | Columna `F` | Tipo de recurso |
 | Columna `G` | Referencia opcional al recurso; los archivos se resuelven únicamente desde el ZIP local |
 
-Las filas sin nombre o sin categoría se omiten.
+Las filas sin nombre o sin categoría se omiten, salvo títulos de tema que identifican el código en C y el nombre en D. Las filas `Video a cámara` requieren un tema asociado.
 
 ### Pasos en la aplicación
 
 1. **Matriz:** selecciona un archivo local `.xlsx` o `.csv`. Los recursos se adjuntan desde el ZIP seleccionado; las referencias de la columna G no se consultan.
-2. **Recursos:** subir el ZIP con los archivos H5P (o HTML) y PDF de las actividades. El ZIP debe traer también los videos de intro/cierre si quieres cargarlos a la ficha.
-3. **Syllabus y preparación (opcional):** adjunta el PDF del syllabus y completa **Línea académica** (`código de programa código de pensum código de asignatura nombre de asignatura`) y **Nivel de pensum**. Ambos campos van juntos: uno vacío y otro con valor no se acepta; si los dejas vacíos, la preparación se omite y el cargue sigue normal.
+2. **Recursos:** subir el ZIP con los archivos H5P (o HTML), PDF y videos a cámara `.webm`. El ZIP debe traer también los videos de intro/cierre si quieres cargarlos a la ficha.
+3. **Syllabus y preparación (opcional):** adjunta el PDF del syllabus y completa **Línea académica** (`código de programa código de pensum código de asignatura nombre de asignatura`) y **Nivel de pensum**. Ambos campos van juntos; si los dejas vacíos, la preparación se omite y el cargue sigue normal.
 4. **Categorías:** marcar OVI, OVA, Retos evaluativos y/o Test evaluativo, y elegir el **formato de los recursos interactivos**: *H5P* o *HTML* (ver abajo).
 5. **Analizar:** revisar las actividades encontradas, el recurso asignado a cada una, las advertencias y el bloque **Preparación de la asignatura** con lo que se hará en la ficha del curso.
 6. **Iniciar:** seleccionar las actividades, ingresar usuario y contraseña de PRIZMA e iniciar. Si ya hay 2 cargues en curso, el nuevo espera en cola.
@@ -381,6 +382,10 @@ Las actividades con recurso interactivo (OVA y OVI de tipo H5P o infografía) se
   - Antes de guardar se verifica que el campo Html quedó idéntico al archivo.
   - PRIZMA no permite un archivo en *Recurso* y Html a la vez: si la actividad ya tenía **cualquier archivo** en *Recurso* (un H5P u otro; a veces PRIZMA solo lo muestra como "Archivo"), se elimina (papelera y confirmación *Eliminar*) y queda anotado en el reporte con su nombre (configurable con `PRIZMA_VACIAR_RECURSO_CON_HTML` en `auto_prizma/core/config.py`). Antes de quitar nada se comprueba que el `.html` se puede leer; si no, la actividad no se toca.
   - Los archivos HTML también se toman únicamente del ZIP local.
+
+### Videos a cámara
+
+Las filas cuyo tipo de recurso es `Video a cámara` se procesan aparte de las actividades convencionales. El archivo `.webm` se busca en el ZIP comparando el nombre del recurso de la matriz con el nombre del archivo; si la coincidencia resulta ambigua, la fila no se carga. En PRIZMA no se busca el nombre del recurso: se abre la pestaña **Tema**, se valida el nombre del programa y el nombre del tema de la matriz (quitando el punto final al buscar, si aparece), y se carga el video en el campo **Recurso** de ese tema. Así se evita confundir temas repetidos entre programas. Los títulos de tema se identifican por el código de la columna C (por ejemplo `1.1`) y su nombre en D.
 
 ### Reporte
 

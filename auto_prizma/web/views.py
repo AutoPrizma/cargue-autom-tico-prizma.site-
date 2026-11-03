@@ -431,10 +431,26 @@ def generar_html(
             clase_tipo = (
                 "badge-pdf"
                 if actividad["tipo"] == "PDF"
+                else "badge-recurso"
+                if actividad["tipo"] == "VIDEO_CAMARA"
                 else "badge-html"
                 if actividad["tipo"] == "HTML"
                 else "badge-h5p"
             )
+            tipo_visible = (
+                "VIDEO A CÁMARA"
+                if actividad["tipo"] == "VIDEO_CAMARA"
+                else actividad["tipo"]
+            )
+            destino_tema = ""
+            if actividad["tipo"] == "VIDEO_CAMARA":
+                destino_tema = (
+                    '<small>Destino: '
+                    + e(hoja.get("programa") or "")
+                    + " · Tema: "
+                    + e(actividad.get("tema") or "sin tema detectado")
+                    + "</small>"
+                )
 
             archivo_drive = "Se resolverá desde el ZIP"
             estado_zip = "Se comprobará al cargar"
@@ -455,10 +471,10 @@ def generar_html(
                 </td>
                 <td>{e(actividad["semana"])}</td>
                 <td>{e(actividad["unidad"])}</td>
-                <td class="celda-actividad">{e(actividad["nombre"])}</td>
+                <td class="celda-actividad">{e(actividad["nombre"])}{destino_tema}</td>
                 <td><span class="badge {clase_categoria}">{e(etiqueta_categoria)}</span></td>
                 <td><span class="badge badge-recurso">{e(tipo_recurso)}</span></td>
-                <td><span class="badge {clase_tipo}">{e(actividad["tipo"])}</span></td>
+                <td><span class="badge {clase_tipo}">{e(tipo_visible)}</span></td>
                 <td class="celda-actividad" title="{e(archivo_drive)}">
                     <strong>{e(archivo_drive)}</strong>
                 </td>
@@ -508,7 +524,9 @@ def generar_html(
     resumen_origen = (
         e(nombre_matriz or "Matriz local") + " · "
         + str(int((resultado.get("zip") or {}).get("total") or 0))
-        + " recurso(s) " + ("HTML" if modo_html else "H5P") + "/PDF detectado(s) en el ZIP"
+        + " recurso(s) " + ("HTML" if modo_html else "H5P") + "/PDF"
+        + (" y .webm" if int((resultado.get("zip") or {}).get("webm") or 0) else "")
+        + " detectado(s) en el ZIP"
     )
     encabezado_recurso = "Resolución de recurso"
     encabezado_estado = "Estado"

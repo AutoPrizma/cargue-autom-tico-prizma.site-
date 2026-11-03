@@ -71,6 +71,7 @@ def ruta_zip(tmp_path):
         archivo.writestr("Lectura guía.pdf", b"%PDF")
         archivo.writestr("dup/Copia.pdf", b"1")
         archivo.writestr("otra/Copia.pdf", b"2")
+        archivo.writestr("videos/Presentacion docente.webm", b"webm")
         archivo.writestr("notas.txt", b"x")
     return str(ruta)
 
@@ -127,6 +128,102 @@ def test_leer_actividades_excel_respects_category_flags(ruta_matriz):
     assert [a["nombre"] for a in solo_ova] == ["Actividad interactiva"]
 
 
+def test_leer_actividades_excel_asocia_video_a_camara_con_tema_y_codigo(tmp_path):
+    libro = Workbook()
+    hoja = libro.active
+    hoja.title = "Curso A"
+    hoja["A1"] = "Administración de Empresas"
+    hoja["A2"] = "Contabilidad I"
+    hoja["A4"] = "Semana correspondiente"
+    hoja["C5"] = "1.1"
+    hoja["D5"] = "Introducción a la unidad"
+    hoja["A6"] = 1
+    hoja["B6"] = "Unidad 1"
+    hoja["D6"] = "Video de bienvenida"
+    hoja["E6"] = "OVI"
+    hoja["F6"] = "Video a cámara"
+    ruta = tmp_path / "matriz_video.xlsx"
+    libro.save(ruta)
+
+    actividades = leer_actividades_excel(str(ruta))
+
+    assert len(actividades) == 1
+    assert actividades[0]["tipo_archivo"] == "VIDEO_CAMARA"
+    assert actividades[0]["tema"] == "Introducción a la unidad"
+    assert actividades[0]["codigo_tema"] == "1.1"
+
+
+def test_normaliza_nombre_de_tema_sin_confundir_programas():
+    assert engine._clave_nombre_tema("1.1 Introducción a la unidad") == "introduccion a la unidad"
+    assert engine._clave_nombre_tema("Introducción a la unidad") == "introduccion a la unidad"
+    assert engine._clave_nombre_tema("1.1 Introducción a la unidad.") == "introduccion a la unidad"
+    assert engine._nombre_tema_para_busqueda("1.1 Introducción a la unidad.") == "1.1 Introducción a la unidad"
+
+
+def test_buscar_tema_valida_nombre_y_programa_exactos(monkeypatch):
+    class Buscador:
+        first = None
+        consulta = None
+
+        def wait_for(self, **_kwargs):
+            return None
+
+        def fill(self, _texto):
+            self.consulta = _texto
+
+    buscador = Buscador()
+    buscador.first = buscador
+
+    class Fila:
+        def __init__(self, texto, identificador):
+            self.texto = texto
+            self.identificador = identificador
+
+        def is_visible(self):
+            return True
+
+        def inner_text(self):
+            return self.texto
+
+    fila_otro_programa = Fila("Introducción a la unidad\nAdministración", "otro")
+    fila_objetivo = Fila("Introducción a la unidad\nContabilidad", "correcto")
+    elementos = [fila_otro_programa, fila_objetivo]
+
+    class Elementos:
+        def count(self):
+            return len(elementos)
+
+        def nth(self, indice):
+            return elementos[indice]
+
+    class Pagina:
+        def locator(self, _selector):
+            return buscador
+
+        def wait_for_timeout(self, _ms):
+            return None
+
+        def get_by_text(self, _texto, **_kwargs):
+            self.consulta_tema = _texto
+            return Elementos()
+
+    monkeypatch.setattr(engine, "encontrar_fila_desde_elemento", lambda elemento: elemento)
+    monkeypatch.setattr(
+        engine,
+        "obtener_id_temporal_fila",
+        lambda fila: fila.identificador,
+    )
+
+    fila, error = engine.buscar_tema_de_programa(
+        Pagina(),
+        {"tema": "1.1 Introducción a la unidad.", "programa": "Contabilidad"},
+    )
+
+    assert error is None
+    assert fila is fila_objetivo
+    assert buscador.consulta == "1.1 Introducción a la unidad"
+
+
 def test_motor_usa_lectura_y_resolucion_locales():
     assert engine.leer_actividades_excel is leer_actividades_excel
     assert engine.resolver_recurso is resolver_recurso
@@ -144,6 +241,7 @@ def test_motor_usa_lectura_y_resolucion_locales():
         ("OVI", "H5P", "", "H5P"),
         ("OVI", "", ".../a.pdf", "PDF"),
         ("OVI", "Infografía", "", "H5P"),
+        ("OVI", "Video a cámara", "", "VIDEO_CAMARA"),
         ("OVI", "Video cierre", "", None),
         ("Challenge", "Reto evaluativo", "", "PDF"),
         ("Challenge", "Otro", "", None),
@@ -187,7 +285,7 @@ def test_normalizar_texto(valor, esperado):
 # INDICE DEL ZIP Y RESOLUCION DE RECURSOS
 # ============================================================
 
-def test_crear_indice_recursos_keeps_only_h5p_and_pdf(ruta_zip):
+def test_crear_indice_recursos_keeps_supported_resources_including_webm(ruta_zip):
     indice = engine.crear_indice_recursos(ruta_zip)
 
     assert [(r["nombre"], r["extension"], r["miembro"]) for r in indice] == [
@@ -195,6 +293,7 @@ def test_crear_indice_recursos_keeps_only_h5p_and_pdf(ruta_zip):
         ("Lectura guía.pdf", ".pdf", "Lectura guía.pdf"),
         ("Copia.pdf", ".pdf", "dup/Copia.pdf"),
         ("Copia.pdf", ".pdf", "otra/Copia.pdf"),
+        ("Presentacion docente.webm", ".webm", "videos/Presentacion docente.webm"),
     ]
     assert all(r["zip"] == ruta_zip for r in indice)
 
@@ -234,6 +333,23 @@ def test_resolver_recurso_finds_and_extracts_file(
     assert resultado["puntuacion"] == puntuacion
     with open(resultado["ruta"], "rb") as extraido:
         assert extraido.read() == contenido
+
+
+def test_resolver_recurso_de_video_usa_similitud_del_nombre_en_webm(
+    ruta_matriz, ruta_zip, tmp_path
+):
+    actividad = {
+        "fila_excel": 20,
+        "nombre": "Presentación docente",
+        "tipo_archivo": "VIDEO_CAMARA",
+        "enlace": "",
+    }
+
+    recurso, error = _resolver(actividad, ruta_zip, ruta_matriz, tmp_path)
+
+    assert error is None
+    assert recurso["nombre_original"] == "Presentacion docente.webm"
+    assert (tmp_path / "extraccion" / "fila_20" / "Presentacion docente.webm").read_bytes() == b"webm"
 
 
 @pytest.mark.parametrize(

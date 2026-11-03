@@ -243,6 +243,9 @@ def analizar_excel(
         cantidad_h5p = 0
         cantidad_pdf = 0
         cantidad_html = 0
+        cantidad_video_camara = 0
+        tema_actual = ""
+        codigo_tema_actual = ""
 
         for fila in range(
             fila_cabecera + 1,
@@ -273,6 +276,18 @@ def analizar_excel(
                 row=fila,
                 column=6,
             ).value
+
+            codigo_tema = hoja.cell(row=fila, column=3).value
+            codigo_tema_texto = str(codigo_tema or "").strip()
+            if (
+                codigo_tema_texto
+                and re.fullmatch(r"\d+(?:\.\d+)?", codigo_tema_texto)
+                and nombre
+                and not categoria
+            ):
+                tema_actual = str(nombre).strip()
+                codigo_tema_actual = codigo_tema_texto
+                continue
 
             enlace = hoja.cell(
                 row=fila,
@@ -323,6 +338,9 @@ def analizar_excel(
             if tipo_archivo is None:
                 continue
 
+            if tipo_archivo == "VIDEO_CAMARA" and not tema_actual:
+                continue
+
             if modo_html and tipo_archivo == "H5P":
                 tipo_archivo = "HTML"
 
@@ -344,39 +362,42 @@ def analizar_excel(
             if tipo_archivo == "HTML":
                 cantidad_html += 1
 
-            actividades.append(
-                {
-                    "fila": fila,
+            if tipo_archivo == "VIDEO_CAMARA":
+                cantidad_video_camara += 1
 
-                    "semana": (
-                        str(semana).strip()
-                        if semana
-                        else ""
-                    ),
+            actividad = {
+                "fila": fila,
 
-                    "unidad": (
-                        str(unidad).strip()
-                        if unidad
-                        else ""
-                    ),
+                "semana": (
+                    str(semana).strip()
+                    if semana
+                    else ""
+                ),
 
-                    "nombre": str(
-                        nombre
-                    ).strip(),
+                "unidad": (
+                    str(unidad).strip()
+                    if unidad
+                    else ""
+                ),
 
-                    "categoria":
-                        categoria_prizma,
+                "nombre": str(
+                    nombre
+                ).strip(),
 
-                    "tipo":
-                        tipo_archivo,
+                "categoria": categoria_prizma,
 
-                    "tipo_recurso": (
-                        str(tipo_recurso).strip()
-                        if tipo_recurso
-                        else tipo_archivo
-                    ),
-                }
-            )
+                "tipo": tipo_archivo,
+
+                "tipo_recurso": (
+                    str(tipo_recurso).strip()
+                    if tipo_recurso
+                    else tipo_archivo
+                ),
+            }
+            if tipo_archivo == "VIDEO_CAMARA":
+                actividad["tema"] = tema_actual
+                actividad["codigo_tema"] = codigo_tema_actual
+            actividades.append(actividad)
 
         hojas_validas.append(
             {
@@ -415,6 +436,9 @@ def analizar_excel(
 
                 "html":
                     cantidad_html,
+
+                "video_camara":
+                    cantidad_video_camara,
             }
         )
 
@@ -436,6 +460,7 @@ def analizar_zip(
     cantidad_h5p = 0
     cantidad_pdf = 0
     cantidad_html = 0
+    cantidad_video_camara = 0
 
     with zipfile.ZipFile(
         BytesIO(contenido_zip),
@@ -467,6 +492,10 @@ def analizar_zip(
 
                 cantidad_html += 1
 
+            elif extension == ".webm":
+
+                cantidad_video_camara += 1
+
     return {
         "h5p":
             cantidad_h5p,
@@ -477,7 +506,11 @@ def analizar_zip(
         "html":
             cantidad_html,
 
+        "webm":
+            cantidad_video_camara,
+
         "total":
             (cantidad_html if modo_html else cantidad_h5p)
-            + cantidad_pdf,
+            + cantidad_pdf
+            + cantidad_video_camara,
     }

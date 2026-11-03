@@ -39,6 +39,36 @@ MENSAJES_ERROR = {
     "ERROR_ENTRANDO_CATEGORIA": (
         "No se pudo abrir la categoría del curso en PRIZMA."
     ),
+    "ERROR_ENTRANDO_A_TEMAS": (
+        "No se pudo abrir la pestaña Tema en PRIZMA."
+    ),
+    "ERROR_TEMA_PROGRAMA_NO_ENCONTRADO": (
+        "No se encontró en PRIZMA un tema que coincida con el programa y el tema de la matriz."
+    ),
+    "ERROR_TEMA_PROGRAMA_AMBIGUO": (
+        "Hay más de un tema en PRIZMA para el mismo programa y nombre; no se eligió ninguno."
+    ),
+    "ERROR_BUSCADOR_TEMAS_NO_DISPONIBLE": (
+        "No se pudo buscar el tema en PRIZMA."
+    ),
+    "ERROR_ABRIENDO_EDICION_TEMA": (
+        "No se pudo abrir la edición del tema en PRIZMA."
+    ),
+    "ERROR_CAMPO_RECURSO_VIDEO_NO_ENCONTRADO": (
+        "No se encontró el campo Recurso compatible con el video .webm en el tema."
+    ),
+    "ERROR_GUARDADO_TEMA_NO_CONFIRMADO": (
+        "PRIZMA no confirmó el guardado del video en el tema."
+    ),
+    "ERROR_CLIC_GUARDAR_TEMA": (
+        "No se pudo accionar Guardar en la edición del tema."
+    ),
+    "ERROR_GUARDADO_TEMA_HTTP_": (
+        "PRIZMA rechazó el guardado del video en el tema."
+    ),
+    "ERROR_POST_GUARDADO_TEMA_LISTADO": (
+        "El video se envió, pero no se pudo confirmar el regreso al listado de temas."
+    ),
     # --- Edicion / guardado ---
     "ERROR_ABRIENDO_EDICION": (
         "No se pudo abrir la edición de la actividad en PRIZMA."
