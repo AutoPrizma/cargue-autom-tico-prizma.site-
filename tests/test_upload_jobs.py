@@ -1,5 +1,7 @@
 """Pruebas del servicio de trabajos de cargue (auto_prizma/services/upload_jobs.py)."""
 
+import threading
+
 import pytest
 
 from auto_prizma.services import upload_jobs
@@ -175,3 +177,72 @@ def test_validate_access_and_enqueue(monkeypatch, trabajos_aislados, acceso_ok):
         assert (encolado, mensaje) == (False, "Credenciales rechazadas.")
         assert trabajo["etapa"] == "analizado"
         assert not _contiene(trabajo, CLAVE)
+
+
+def test_validate_access_reserves_job_before_external_validation(
+    monkeypatch, trabajos_aislados
+):
+    trabajos_aislados["t7"] = _trabajo("t7")
+    monkeypatch.setattr(upload_jobs, "CARGUES_ACTIVOS", upload_jobs.MAX_CARGUES_SIMULTANEOS)
+    inicio_validacion = threading.Event()
+    terminar_validacion = threading.Event()
+    resultados = []
+
+    def validar(_usuario, _clave):
+        inicio_validacion.set()
+        assert terminar_validacion.wait(timeout=2)
+        return {"ok": True}
+
+    monkeypatch.setattr(upload_jobs, "validar_credenciales_prizma", validar)
+    hilo = threading.Thread(
+        target=lambda: resultados.append(
+            upload_jobs.validate_access_and_enqueue("t7", "usuario", CLAVE)
+        )
+    )
+    hilo.start()
+    assert inicio_validacion.wait(timeout=2)
+
+    segundo = upload_jobs.validate_access_and_enqueue("t7", "usuario", CLAVE)
+    assert segundo == (False, "Este trabajo ya fue iniciado.")
+    assert trabajos_aislados["t7"]["etapa"] == "validando_login"
+    assert list(upload_jobs.COLA_CARGUES) == []
+
+    terminar_validacion.set()
+    hilo.join(timeout=2)
+    assert not hilo.is_alive()
+    assert resultados == [(True, "")]
+    assert list(upload_jobs.COLA_CARGUES) == ["t7"]
+
+
+def test_cancel_during_access_validation_does_not_enqueue(
+    monkeypatch, trabajos_aislados
+):
+    trabajos_aislados["t8"] = _trabajo("t8")
+    inicio_validacion = threading.Event()
+    terminar_validacion = threading.Event()
+    resultados = []
+
+    def validar(_usuario, _clave):
+        inicio_validacion.set()
+        assert terminar_validacion.wait(timeout=2)
+        return {"ok": True}
+
+    monkeypatch.setattr(upload_jobs, "validar_credenciales_prizma", validar)
+    hilo = threading.Thread(
+        target=lambda: resultados.append(
+            upload_jobs.validate_access_and_enqueue("t8", "usuario", CLAVE)
+        )
+    )
+    hilo.start()
+    assert inicio_validacion.wait(timeout=2)
+
+    assert upload_jobs.cancel_job("t8", "ana") == "solicitado"
+    terminar_validacion.set()
+    hilo.join(timeout=2)
+
+    trabajo = trabajos_aislados["t8"]
+    assert not hilo.is_alive()
+    assert resultados == [(False, "Cargue cancelado durante la validación de acceso.")]
+    assert trabajo["etapa"] == "cancelado"
+    assert trabajo["terminado"] is True
+    assert list(upload_jobs.COLA_CARGUES) == []

@@ -67,8 +67,6 @@ def iniciar_trabajo(
             seleccion_actual=[],
         )
 
-    trabajo["seleccion_actividades"] = seleccion_validada
-
     usuario_prizma = usuario_prizma.strip()
     if not usuario_prizma or not contrasena_prizma:
         return generar_html(
@@ -86,6 +84,7 @@ def iniciar_trabajo(
         trabajo_id,
         usuario_prizma,
         contrasena_prizma,
+        seleccion_validada,
     )
 
     if not encolado:
