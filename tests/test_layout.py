@@ -222,6 +222,95 @@ def test_moodle_reports_populates_shared_summary_and_table(monkeypatch, tmp_path
     assert "?formato=csv" in page and "?formato=json" in page
 
 
+def test_moodle_reports_lists_course_audits_and_allows_download(monkeypatch, tmp_path):
+    """Las auditorías de curso Moodle se guardan junto a los cargues y deben verse en Reportes."""
+    monkeypatch.setattr("auto_prizma.api.routes.moodle_resources._request_is_local", lambda _request: True)
+    monkeypatch.setattr("auto_prizma.api.routes.moodle_resources._moodle_report_dir", lambda: str(tmp_path))
+    stem = "moodle-auditoria-20261105T144537Z-fed85e83"
+    (tmp_path / (stem + ".json")).write_text(
+        json.dumps({
+            "createdAt": "2026-11-05T14:45:37+00:00",
+            "summary": {"ok": 60, "revisar": 0, "falta": 27, "total": 87},
+            "rows": [],
+        }),
+        encoding="utf-8",
+    )
+    (tmp_path / (stem + ".csv")).write_text("semana,actividad\n", encoding="utf-8")
+
+    page = _session_client().get("/moodle-reportes").text
+    assert "1 reporte" in page
+    assert "<strong>Auditoría</strong><small>60 completos de 87</small>" in page
+    assert ">27</strong><span>Pendientes / revisión</span>" in page
+    assert ">0</strong><span>Recursos cargados</span>" in page
+    assert 'href="/moodle-reportes/' + stem + '.json?formato=csv"' in page
+
+    descarga = _session_client().get("/moodle-reportes/" + stem + ".json?formato=csv")
+    assert descarga.status_code == 200
+    assert "semana,actividad" in descarga.text
+
+
+def test_moodle_report_can_be_viewed_inside_the_app(monkeypatch, tmp_path):
+    """El botón «Ver» abre el reporte (auditoría o cargue) con su tabla, filtros y descargas."""
+    monkeypatch.setattr("auto_prizma.api.routes.moodle_resources._request_is_local", lambda _request: True)
+    monkeypatch.setattr("auto_prizma.api.routes.moodle_resources._moodle_report_dir", lambda: str(tmp_path))
+    auditoria = "moodle-auditoria-20261105T151048Z-d1f25aa8.json"
+    (tmp_path / auditoria).write_text(
+        json.dumps({
+            "createdAt": "2026-11-05T15:10:48+00:00",
+            "summary": {"ok": 1, "revisar": 0, "falta": 1, "total": 2},
+            "rows": [
+                {"semana": "Semana 1", "actividad": "Mapa <causal>", "tipo": "h5p", "estado": "ok",
+                 "renderiza": "si", "titulo_interno": "Mapa causal", "coincide": True,
+                 "matriz_estado": "coincide", "matriz_recurso": "Mapa causal", "detalle": "Abrió bien."},
+                {"semana": "Semana 2", "actividad": "Lectura", "tipo": "pdf", "estado": "falta",
+                 "renderiza": "", "titulo_interno": "", "coincide": None,
+                 "matriz_estado": "no publicado", "matriz_recurso": "Lectura",
+                 "detalle": "No está en Moodle.\nCall log:\n  - waiting for locator"},
+            ],
+        }),
+        encoding="utf-8",
+    )
+    cargue = "moodle-cargue-20261028T120000Z-a1b2c3d4.json"
+    (tmp_path / cargue).write_text(
+        json.dumps({
+            "createdAt": "2026-10-28T12:00:00+00:00",
+            "summary": {"uploaded": 1, "alreadyPresent": 0, "notLoaded": 0, "needsReview": 0, "notProcessed": 0},
+            "rows": [{"week": "Semana 1", "title": "Infografía A", "status": "Cargado",
+                      "file": "C:\\tmp\\Infografia A.pdf", "detail": "", "kind": "pdf"}],
+        }),
+        encoding="utf-8",
+    )
+
+    lista = _session_client().get("/moodle-reportes").text
+    assert 'href="/moodle-reportes/' + auditoria + '/ver"' in lista
+    assert 'href="/moodle-reportes/' + cargue + '/ver"' in lista
+
+    vista = _session_client().get("/moodle-reportes/" + auditoria + "/ver")
+    assert vista.status_code == 200
+    assert "Reporte de auditoría" in vista.text
+    assert "Mapa &lt;causal&gt;" in vista.text and "Mapa <causal>" not in vista.text
+    assert 'data-fila data-estado="falta" data-semana="Semana 2"' in vista.text
+    assert 'id="tabla-reporte-moodle" data-tabla' in vista.text
+    assert '<option value="Semana 2">Semana 2</option>' in vista.text
+    assert 'href="/moodle-reportes/' + auditoria + '?formato=csv"' in vista.text
+    assert 'href="/moodle-reportes">' in vista.text
+    # Un detalle de varias líneas muestra la primera y despliega el resto.
+    assert "No está en Moodle.<details><summary>Ver detalle completo</summary><pre>" in vista.text
+    assert '<td class="reporte-detalle">Abrió bien.</td>' in vista.text
+
+    vista_cargue = _session_client().get("/moodle-reportes/" + cargue + "/ver")
+    assert vista_cargue.status_code == 200
+    assert "Reporte de cargue" in vista_cargue.text
+    assert "Infografía A" in vista_cargue.text
+    assert "Infografia A.pdf" in vista_cargue.text and "C:\\tmp" not in vista_cargue.text
+
+    for nombre in ("no-existe.json", "moodle-cargue-falta.json", "otro-archivo.json"):
+        assert _session_client().get("/moodle-reportes/" + nombre + "/ver").status_code == 404
+
+    monkeypatch.setattr("auto_prizma.api.routes.moodle_resources._request_is_local", lambda _request: False)
+    assert _session_client().get("/moodle-reportes/" + auditoria + "/ver").status_code == 403
+
+
 def test_moodle_auditor_tab_uses_shared_auditor_form():
     response = _session_client().get("/moodle-auditor")
     assert response.status_code == 200
