@@ -124,6 +124,9 @@ def test_iniciar_deja_reporte_descargable(monkeypatch, tmp_path):
     assert "Auditoría del curso terminada" in pagina.text
     assert "Lectura guía" in pagina.text
     assert "Descargar CSV" in pagina.text
+    # Terminada: la página no vuelve a consultar el estado (antes recargaba sin fin).
+    assert 'data-finished="1"' in pagina.text
+    assert "if(root.getAttribute('data-finished')!=='1')poll();" in pagina.text
 
     descarga = _cliente().get(
         "/moodle-auditor-curso/" + trabajo["id"] + "/reporte?formato=csv"
@@ -181,7 +184,11 @@ def test_cancelar_trabajo_en_curso(monkeypatch, tmp_path):
     _cliente().post("/moodle-auditor-curso/iniciar", data={"course_url": CURSO})
     trabajo = next(iter(moodle_audit.MOODLE_AUDIT_JOBS.values()))
 
-    cancelado = _cliente().post("/moodle-auditor-curso/" + trabajo["id"] + "/cancelar")
+    # En curso: la página sigue consultando el estado para pintar el avance.
+    en_curso = _cliente().get("/moodle-auditor-curso")
+    assert 'data-finished="0"' in en_curso.text
+
+    cancelado =_cliente().post("/moodle-auditor-curso/" + trabajo["id"] + "/cancelar")
     assert cancelado.status_code == 200
     assert cancelado.json()["cancel_requested"] is True
 

@@ -283,7 +283,8 @@ def render_moodle_audit_page(
     )
 
     contenido = (
-        '<div class="auditoria-page" id="auditoria-moodle" data-job-id="' + _e(job["id"]) + '">'
+        '<div class="auditoria-page" id="auditoria-moodle" data-job-id="' + _e(job["id"])
+        + '" data-finished="' + ("0" if corriendo else "1") + '">'
         + encabezado + _alerta(error)
         + '<section class="panel auditoria-progreso">'
         '<div class="auditoria-progreso-cab">'
@@ -422,7 +423,9 @@ _JS_AUDITORIA = r"""
       render(job);window.setTimeout(poll,1500);
     }catch(_){window.setTimeout(poll,3000);}
   }
-  poll();
+  // Si la página ya se pintó con la auditoría terminada no se consulta más:
+  // recargar al ver finished otra vez producía un bucle infinito de recargas.
+  if(root.getAttribute('data-finished')!=='1')poll();
 })();
 """
 

@@ -84,6 +84,12 @@ Abre **http://127.0.0.1:8000**
 
 En local, abre **http://127.0.0.1:8000**: la app entra directamente, sin usuario ni contraseña. Este acceso directo solo se aplica a conexiones desde el mismo equipo; los despliegues remotos conservan su protección de acceso.
 
+O con el script, que arranca uvicorn con recarga en 127.0.0.1 y salida UTF-8 (otro puerto con `-Puerto`):
+
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts\run_local.ps1
+```
+
 Dentro de la app:
 
 - **Inicio** — landing con tarjetas para **Matrices**, **Cargue PRIZMA**, **Cargue Moodle** y **Automatizaciones**, en ese orden (el sidebar también incluye Control Tower antes de Matrices). La cabecera ofrece accesos directos a **Entrar a PRIZMA** (`https://admin.prizma.site/`) y **Control Tower**. La app usa transiciones y animaciones suaves en navegación y controles, y respeta la preferencia de reducir movimiento del sistema.

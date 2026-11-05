@@ -25,6 +25,7 @@ from auto_prizma.services.moodle_resources import (
     start_moodle_publish,
 )
 from auto_prizma.web.moodle_views import render_moodle_labels_page, render_moodle_page
+from auto_prizma.web.moodle_report_views import render_moodle_saved_report
 from auto_prizma.web.icons import icon
 from auto_prizma.web.layout import render_page
 
@@ -46,6 +47,26 @@ def _moodle_report_dir():
     return os.path.join(DATA_DIR, "reportes", "moodle", owner_hash)
 
 
+# Reportes que guardan el cargue Moodle y la auditoría de curso Moodle en la carpeta de cada usuario.
+_MOODLE_REPORT_PREFIXES = ("moodle-cargue-", "moodle-auditoria-")
+
+
+def _is_report_filename(filename):
+    """Solo nombres simples de reportes Moodle (.json): evita rutas fuera de la carpeta del usuario."""
+    return (
+        os.path.basename(filename) == filename
+        and filename.startswith(_MOODLE_REPORT_PREFIXES)
+        and filename.endswith(".json")
+    )
+
+
+def _number_cell(value):
+    """Celda numérica de la tabla de reportes; None (no aplica) se muestra como guion."""
+    if value is None:
+        return '<td data-valor="-1">—</td>'
+    return '<td data-valor="' + str(value) + '">' + str(value) + '</td>'
+
+
 def _limpiar_reportes_moodle(report_dir):
     """Elimina pares de reportes locales con más de 15 días."""
     try:
@@ -56,7 +77,7 @@ def _limpiar_reportes_moodle(report_dir):
     bases = {
         os.path.splitext(nombre)[0]
         for nombre in filenames
-        if nombre.startswith(("moodle-cargue-", "moodle-auditoria-")) and nombre.endswith((".json", ".csv"))
+        if nombre.startswith(_MOODLE_REPORT_PREFIXES) and nombre.endswith((".json", ".csv"))
     }
     for base in bases:
         paths = [os.path.join(report_dir, base + extension) for extension in (".json", ".csv")]
@@ -82,7 +103,7 @@ def moodle_reports(request: Request):
     report_summaries = []
     try:
         filenames = sorted(
-            (name for name in os.listdir(report_dir) if name.startswith("moodle-cargue-") and name.endswith(".json")),
+            (name for name in os.listdir(report_dir) if name.startswith(_MOODLE_REPORT_PREFIXES) and name.endswith(".json")),
             key=lambda name: os.path.getmtime(os.path.join(report_dir, name)),
             reverse=True,
         )
@@ -98,33 +119,43 @@ def moodle_reports(request: Request):
         summary = report.get("summary") or {}
         stamp_iso = str(report.get("createdAt") or "")
         stamp = stamp_iso.replace("T", " ").replace("+00:00", " UTC")
-        uploaded = int(summary.get("uploaded", 0) or 0)
-        already = int(summary.get("alreadyPresent", 0) or 0)
-        pending = int(summary.get("notLoaded", 0) or 0) + int(summary.get("needsReview", 0) or 0) + int(summary.get("notProcessed", 0) or 0)
+        if filename.startswith("moodle-auditoria-"):
+            # La auditoría no sube nada: sus pendientes son lo que hay que revisar o falta en el curso.
+            kind = "Auditoría"
+            kind_detail = str(int(summary.get("ok", 0) or 0)) + " completos de " + str(int(summary.get("total", 0) or 0))
+            uploaded = already = None
+            pending = int(summary.get("revisar", 0) or 0) + int(summary.get("falta", 0) or 0)
+        else:
+            kind = "Cargue"
+            kind_detail = ""
+            uploaded = int(summary.get("uploaded", 0) or 0)
+            already = int(summary.get("alreadyPresent", 0) or 0)
+            pending = int(summary.get("notLoaded", 0) or 0) + int(summary.get("needsReview", 0) or 0) + int(summary.get("notProcessed", 0) or 0)
         state = "pendiente" if pending else "completo"
-        report_summaries.append({"uploaded": uploaded, "already": already, "pending": pending})
+        report_summaries.append({"uploaded": uploaded or 0, "already": already or 0, "pending": pending})
         safe_filename = html.escape(filename, quote=True)
         links = (
+            '<a class="boton chico" href="/moodle-reportes/' + safe_filename + '/ver">' + icon("ver") + 'Ver</a> '
             '<a class="boton secundario chico" href="/moodle-reportes/' + safe_filename + '?formato=csv">CSV</a> '
             '<a class="boton secundario chico" href="/moodle-reportes/' + safe_filename + '?formato=json">JSON</a>'
         )
-        search_text = " ".join((filename, stamp, str(uploaded), str(already), str(pending))).lower()
+        search_text = " ".join((filename, stamp, kind, str(uploaded or ""), str(already or ""), str(pending))).lower()
         rows.append(
             '<tr data-fila data-fecha="' + html.escape(stamp_iso, quote=True) + '" data-estado="' + state
             + '" data-busqueda="' + html.escape(search_text, quote=True) + '">'
             '<td class="celda-fecha" data-valor="' + html.escape(stamp_iso, quote=True) + '"><strong>'
             + html.escape(stamp or filename) + '</strong><small>' + safe_filename + '</small></td>'
-            '<td data-valor="' + str(uploaded) + '">' + str(uploaded) + '</td>'
-            '<td data-valor="' + str(already) + '">' + str(already) + '</td>'
-            '<td data-valor="' + str(pending) + '">' + str(pending) + '</td>'
-            '<td class="celda-acciones">' + links + '</td></tr>'
+            '<td class="celda-tipo" data-valor="' + kind + '"><strong>' + kind + '</strong>'
+            + ('<small>' + html.escape(kind_detail) + '</small>' if kind_detail else '') + '</td>'
+            + _number_cell(uploaded) + _number_cell(already) + _number_cell(pending)
+            + '<td class="celda-acciones">' + links + '</td></tr>'
         )
     total = len(rows)
     uploaded_total = sum(item["uploaded"] for item in report_summaries)
     already_total = sum(item["already"] for item in report_summaries)
     pending_total = sum(item["pending"] for item in report_summaries)
     if not rows:
-        rows.append('<tr class="fila-vacia"><td colspan="5">Aún no hay reportes de Moodle.</td></tr>')
+        rows.append('<tr class="fila-vacia"><td colspan="6">Aún no hay reportes de Moodle.</td></tr>')
     plural = "" if total == 1 else "s"
     date_options = (
         '<option value="">Todas las fechas</option><option value="hoy">Hoy</option>'
@@ -132,7 +163,7 @@ def moodle_reports(request: Request):
     )
     body = (
         '<header class="encabezado"><div class="encabezado-titulo"><span class="icono-tile grande">' + icon("documento")
-        + '</span><div><h1>Reportes de Moodle</h1><p>Reportes de publicaciones realizadas desde este equipo.</p></div></div>'
+        + '</span><div><h1>Reportes de Moodle</h1><p>Reportes de publicaciones y auditorías realizadas desde este equipo.</p></div></div>'
         + '<span class="chip grande">' + icon("documento") + f'{total} reporte{plural}</span></header>'
         + '<div class="panel herramientas dos">'
         + '<label class="campo">' + icon("buscar") + '<span class="sr-only">Buscar</span>'
@@ -153,6 +184,7 @@ def moodle_reports(request: Request):
         + '<section class="panel tabla-panel" id="tabla-moodle-reportes" data-tabla data-unidad="reportes" data-por-pagina="10">'
         + '<div class="tabla-scroll"><table class="tabla"><thead><tr>'
         + '<th data-orden="texto" data-orden-inicial="desc"><button type="button" class="orden">Fecha de generación' + icon("ordenar") + '</button></th>'
+        + '<th data-orden="texto"><button type="button" class="orden">Tipo' + icon("ordenar") + '</button></th>'
         + '<th data-orden="numero"><button type="button" class="orden">Cargados' + icon("ordenar") + '</button></th>'
         + '<th data-orden="numero"><button type="button" class="orden">Ya estaban' + icon("ordenar") + '</button></th>'
         + '<th data-orden="numero"><button type="button" class="orden">Pendientes / revisión' + icon("ordenar") + '</button></th>'
@@ -162,7 +194,11 @@ def moodle_reports(request: Request):
         + '<option value="10" selected>10 por página</option><option value="25">25 por página</option><option value="50">50 por página</option>'
         + '</select></label><nav class="paginas" data-tabla-paginas aria-label="Páginas"></nav></div></div></section>'
     )
-    return HTMLResponse(render_page("Reportes de Moodle", body, active="moodle-reportes"))
+    return HTMLResponse(render_page(
+        "Reportes de Moodle", body, active="moodle-reportes",
+        page_css=".celda-tipo strong { display: block; color: var(--texto); font-weight: 600; }"
+        " .celda-tipo small { display: block; color: var(--muted); margin-top: 3px; }",
+    ))
 
 
 @app.get("/moodle-reportes/{filename}")
@@ -170,7 +206,7 @@ def moodle_saved_report(filename: str, request: Request, formato: str = "csv"):
     if not _request_is_local(request):
         return JSONResponse({"error": "Disponible solo desde la instancia local."}, status_code=403)
     _limpiar_reportes_moodle(_moodle_report_dir())
-    if formato not in {"csv", "json"} or os.path.basename(filename) != filename or not filename.startswith("moodle-cargue-") or not filename.endswith(".json"):
+    if formato not in {"csv", "json"} or not _is_report_filename(filename):
         return JSONResponse({"error": "Reporte Moodle no válido."}, status_code=404)
     stem = filename[:-5]
     path = os.path.join(_moodle_report_dir(), stem + (".csv" if formato == "csv" else ".json"))
@@ -178,6 +214,38 @@ def moodle_saved_report(filename: str, request: Request, formato: str = "csv"):
         return JSONResponse({"error": "No se encontró el reporte Moodle."}, status_code=404)
     media_type = "text/csv" if formato == "csv" else "application/json"
     return FileResponse(path, media_type=media_type, filename=os.path.basename(path))
+
+
+@app.get("/moodle-reportes/{filename}/ver", response_class=HTMLResponse)
+def moodle_saved_report_view(filename: str, request: Request):
+    """Muestra dentro de la app el contenido de un reporte Moodle guardado."""
+    if not _request_is_local(request):
+        return HTMLResponse(
+            render_page("Reportes de Moodle", '<section class="panel panel-contenido"><h1>Reportes de Moodle</h1><p>Disponible solo desde la instancia local.</p></section>', active="moodle-reportes"),
+            status_code=403,
+        )
+    report_dir = _moodle_report_dir()
+    _limpiar_reportes_moodle(report_dir)
+    path = os.path.join(report_dir, filename)
+    report = None
+    if _is_report_filename(filename) and os.path.isfile(path):
+        try:
+            with open(path, encoding="utf-8") as stream:
+                report = json.load(stream)
+        except (OSError, ValueError):
+            report = None
+    if not isinstance(report, dict):
+        return HTMLResponse(
+            render_page(
+                "Reportes de Moodle",
+                '<section class="panel panel-contenido"><h1>Reporte no encontrado</h1>'
+                '<p>El reporte no existe, venció (se guardan 15 días) o no se pudo leer.</p>'
+                '<p><a class="boton secundario" href="/moodle-reportes">Volver a reportes</a></p></section>',
+                active="moodle-reportes",
+            ),
+            status_code=404,
+        )
+    return HTMLResponse(render_moodle_saved_report(filename, report))
 
 
 @app.get("/moodle", response_class=HTMLResponse)
