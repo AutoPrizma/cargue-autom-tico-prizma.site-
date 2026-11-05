@@ -127,7 +127,6 @@ async def analizar(
         document_test = None
         if procesar_test:
             from auto_prizma.evaluative_tests.routes import _extraer_bytes_docx_request
-            from auto_prizma.evaluative_tests.state import register_test_job
             from auto_prizma.evaluative_tests.parser import parse_docx_bytes
 
             content_test, nom_test, err_test = await _extraer_bytes_docx_request(
@@ -160,13 +159,14 @@ async def analizar(
                         )
                     )
 
-            test_job_id = register_test_job(
-                _usuario_actual(),
-                document_test,
-                _ahora_colombia_iso(),
-            )
-
             if not procesar_recursos:
+                from auto_prizma.evaluative_tests.state import register_test_job
+
+                test_job_id = register_test_job(
+                    _usuario_actual(),
+                    document_test,
+                    _ahora_colombia_iso(),
+                )
                 return RedirectResponse(f"/tests/{test_job_id}/revision", status_code=303)
 
         formato_recurso = str(formato_recurso or "").strip().upper() or "H5P"
@@ -212,6 +212,17 @@ async def analizar(
         revision_h5p = None
         if formato_recurso == "H5P":
             revision_h5p = preview_h5p_titles(contenido_zip, hojas, TEMP_DIR)
+
+        # Registrar el Test combinado solo cuando matriz y ZIP pasaron todas
+        # las validaciones; así un rechazo no deja un job sin acceso visible.
+        if procesar_test and document_test:
+            from auto_prizma.evaluative_tests.state import register_test_job
+
+            test_job_id = register_test_job(
+                _usuario_actual(),
+                document_test,
+                _ahora_colombia_iso(),
+            )
 
         # ====================================================
         # CREAR TRABAJO (guarda los archivos seleccionados y lo registra)

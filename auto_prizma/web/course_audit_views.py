@@ -1,9 +1,8 @@
 """Paginas de la auditoria profunda de curso: PRIZMA y Moodle.
 
-La auditoria no usa matriz, CSV ni syllabus: entra al curso publicado,
-recorre sus actividades y valida cada recurso por si mismo. Aqui solo se
-monta la cara de usuario (formulario, avance y reporte); los trabajos
-viven en services/.
+La auditoría PRIZMA entra al curso sin matriz; Moodle permite una matriz
+opcional y excluye el syllabus. Aquí solo se monta la cara de usuario
+(formulario, avance y reporte); los trabajos viven en services/.
 """
 
 import html
@@ -21,6 +20,7 @@ _ESTADOS_AUDITORIA = {
     "revisar": ("badge-ambar", "Revisar"),
     "falta": ("badge-rojo", "Sin recurso"),
     "no procesado": ("badge-gris", "No procesado"),
+    "omitido": ("badge-gris", "Omitido"),
 }
 
 _RENDER_LABELS = {
@@ -247,6 +247,7 @@ def render_moodle_audit_page(
         "logging_in": "Esperando inicio de sesión",
         "auditing": "Auditando el curso",
         "completed": "Completada",
+        "stopped": "Detenida: Moodle no respondió",
         "cancelled": "Cancelada",
         "error": "Con error",
     }
@@ -254,6 +255,7 @@ def render_moodle_audit_page(
         "logging_in": "badge-azul",
         "auditing": "badge-ambar",
         "completed": "badge-verde",
+        "stopped": "badge-ambar",
         "cancelled": "badge-gris",
         "error": "badge-rojo",
     }
@@ -320,14 +322,14 @@ def render_moodle_audit_page(
 
 _CSS_AUDITORIA = r"""
 .auditoria-page { display: grid; gap: 20px; }
-.auditoria-pasos { display: grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); gap: 14px; }
+.auditoria-pasos { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 230px), 1fr)); gap: 14px; }
 .auditoria-paso { display: grid; grid-template-columns: 44px minmax(0, 1fr); gap: 12px; align-items: start; padding: 16px; border: 1px solid var(--borde); border-radius: 14px; background: var(--panel); }
 .auditoria-paso .icono-tile { width: 44px; height: 44px; border-radius: 12px; }
 .auditoria-paso strong { display: block; margin: 2px 0 4px; font-size: 13.5px; }
 .auditoria-paso p { margin: 0; color: var(--muted); font-size: 12.5px; line-height: 1.5; }
 .auditoria-form { padding: 24px; display: grid; gap: 16px; }
 .auditoria-form h2 { margin: 0; font-size: 19px; font-weight: 800; }
-.auditoria-form .form-fila { display: grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); gap: 14px; align-items: start; }
+.auditoria-form .form-fila { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 230px), 1fr)); gap: 14px; align-items: start; }
 .auditoria-form label { display: grid; gap: 7px; font-size: 13px; font-weight: 700; color: var(--texto-2); }
 .auditoria-form input:not([type="checkbox"]), .auditoria-form select { min-height: 44px; width: 100%; padding: 10px 13px; border: 1px solid var(--borde); border-radius: 11px; background: var(--panel-2); color: var(--texto); font-size: 14px; }
 .auditoria-form label > input[type="url"] { align-self: start; height: 48px; box-sizing: border-box; }
@@ -371,9 +373,9 @@ _JS_AUDITORIA = r"""
   if(!root)return;
   var id=root.getAttribute('data-job-id');
   var base='/moodle-auditor-curso/'+encodeURIComponent(id);
-  var LABELS={logging_in:'Esperando inicio de sesión',auditing:'Auditando el curso',completed:'Completada',cancelled:'Cancelada',error:'Con error'};
-  var TONES={logging_in:'badge-azul',auditing:'badge-ambar',completed:'badge-verde',cancelled:'badge-gris',error:'badge-rojo'};
-  var ESTADOS={ok:['badge-verde','Completo'],revisar:['badge-ambar','Revisar'],falta:['badge-rojo','Sin recurso'],'no procesado':['badge-gris','No procesado']};
+  var LABELS={logging_in:'Esperando inicio de sesión',auditing:'Auditando el curso',completed:'Completada',stopped:'Detenida: Moodle no respondió',cancelled:'Cancelada',error:'Con error'};
+  var TONES={logging_in:'badge-azul',auditing:'badge-ambar',completed:'badge-verde',stopped:'badge-ambar',cancelled:'badge-gris',error:'badge-rojo'};
+   var ESTADOS={ok:['badge-verde','Completo'],revisar:['badge-ambar','Revisar'],falta:['badge-rojo','Sin recurso'],'no procesado':['badge-gris','No procesado'],omitido:['badge-gris','Omitido']};
   var RENDERS={si:'Sí',no:'No',no_comprobable:'No comprobable','':''};
   function el(tag,cls,text){var node=document.createElement(tag);if(cls)node.className=cls;if(text!=null)node.textContent=text;return node;}
   function render(job){

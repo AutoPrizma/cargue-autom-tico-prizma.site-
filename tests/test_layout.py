@@ -101,7 +101,7 @@ def test_file_dropzones_have_traveling_border_and_selected_state():
     assert "conic-gradient(from var(--file-border-angle)" in css
     assert "to { --file-border-angle: 360deg; }" in css
     assert "prefers-reduced-motion: reduce" in css
-    assert "archivo-listo" in js and "archivo-inactivo" in js
+    assert "tiene-archivo" in js and "archivo-inactivo" in js
 
 
 @pytest.mark.parametrize("ruta", ["/estilos-responsive.css", "/tema.js"])
@@ -148,10 +148,12 @@ def test_landing_separates_prizma_moodle_and_n8n():
 def test_prizma_page_keeps_the_form_contract_and_status_pills():
     html = _session_client().get("/prizma").text
 
-    assert '<span class="icono-tile">' in html
-    assert '<span class="saludo-acento">dev</span>' in html
-    assert "@keyframes saludo-color" in html
-    assert "@media(prefers-reduced-motion:reduce) { .saludo-acento" in html
+    assert "Hola," not in html
+    assert "saludo-acento" not in html
+    assert '<h1>Cargue de recursos</h1>' in html
+    assert 'aria-label="Etapas del cargue"' in html
+    assert "1 Archivos" in html and "2 Revisión" in html and "3 Cargue en PRIZMA" in html
+    assert 'class="estado-prizma-inicio"' in html
     assert "Hola, Admin local" not in html
     for nombre in [
         "matriz_archivo", "recursos", "ovi", "ova", "retos",
@@ -170,6 +172,27 @@ def test_prizma_page_keeps_the_form_contract_and_status_pills():
     assert 'aria-label="Herramientas PRIZMA"' in html
     assert 'href="/tests"' in html
     assert 'href="/reportes"' in html
+
+
+def test_file_selection_state_does_not_collide_with_ready_file_card():
+    from pathlib import Path
+
+    root = Path(__file__).resolve().parents[1]
+    js = (root / "static" / "app.js").read_text()
+    css = (root / "static" / "app.css").read_text()
+
+    assert 'classList.toggle("tiene-archivo"' in js
+    assert ".dropzone.tiene-archivo" in css
+    assert ".archivo-listo {" not in css
+
+
+def test_prizma_upload_styles_include_small_screen_layouts():
+    html = _session_client().get("/prizma").text
+
+    assert "grid-template-columns: repeat(auto-fit, minmax(min(100%, 340px), 1fr))" in html
+    assert "align-items: start" in html
+    assert "@media (max-width: 760px)" in html
+    assert ".grid-archivos, .opciones-modo { grid-template-columns: minmax(0, 1fr)" in html
 
 
 def test_prizma_workspace_tabs_are_in_requested_order():

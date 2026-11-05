@@ -348,7 +348,7 @@ _CSS_CURSOS = r"""
 }
 .form-manual input[type="file"] { font-size: 14px; color: var(--muted); }
 .form-manual .form-acciones { display: flex; gap: 10px; flex-wrap: wrap; }
-@media(max-width:600px) { .estado-vacio { grid-template-columns: 1fr; gap: 14px; } .estado-vacio .cursos-vacio-icon { width: 48px; height: 48px; } .curso-estado-cabecera { align-items: flex-start; flex-wrap: wrap; } .curso-estado-progreso { margin-left: auto; } }
+@media(max-width:700px) { .estado-vacio { grid-template-columns: 1fr; gap: 14px; } .estado-vacio .cursos-vacio-icon { width: 48px; height: 48px; } .curso-estado-cabecera { align-items: flex-start; flex-wrap: wrap; } .curso-estado-progreso { margin-left: auto; } .curso-estado .tabla-scroll{max-width:100%;overflow-x:auto;-webkit-overflow-scrolling:touch}.curso-estado .tabla{min-width:680px}.curso-estado{padding:16px!important}.form-manual{padding:16px}.form-manual .form-acciones{display:grid;grid-template-columns:minmax(0,1fr)}.form-manual .form-acciones .boton{width:100%} }
 """
 
 _JS_CURSOS = r"""

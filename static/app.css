@@ -141,6 +141,8 @@ a.panel:hover { transform: translateY(-2px); border-color: var(--acento-borde); 
    MARCO: MENU LATERAL
    ============================================================ */
 .app { min-height: 100vh; display: grid; grid-template-columns: 256px minmax(0, 1fr); }
+*, *::before, *::after { box-sizing: border-box; }
+img, video, iframe { max-width: 100%; }
 
 .sidebar {
   position: sticky; top: 0; height: 100vh;
@@ -201,7 +203,7 @@ a.panel:hover { transform: translateY(-2px); border-color: var(--acento-borde); 
   display: flex; align-items: center; justify-content: flex-end; gap: 12px;
   padding: 16px 32px 0;
 }
-.contenido { width: 100%; max-width: 1480px; margin: 0 auto; padding: 14px 32px 44px; min-width: 0; }
+.contenido { width: 100%; max-width: 1480px; margin: 0 auto; padding: 14px 32px 44px; min-width: 0; overflow-wrap: anywhere; }
 
 .barra-superior .boton-tema {
   width: 46px; height: 46px; display: grid; place-items: center;
@@ -303,9 +305,9 @@ a.panel:hover { border-color: var(--acento-borde); box-shadow: var(--sombra); }
   animation: file-border-run 2.8s linear infinite;
 }
 :is(.dropzone, .moodle-file-drop, .moodle-label-file) > :not(input) { position: relative; z-index: 1; }
-:is(.dropzone.archivo-listo, .moodle-file-drop.archivo-listo, .moodle-label-file.archivo-listo)::after,
+:is(.dropzone.tiene-archivo, .moodle-file-drop.tiene-archivo, .moodle-label-file.tiene-archivo)::after,
 :is(.dropzone.archivo-inactivo, .moodle-file-drop.archivo-inactivo, .moodle-label-file.archivo-inactivo)::after { animation: none; opacity: 0; }
-:is(.dropzone.archivo-listo, .moodle-file-drop.archivo-listo, .moodle-label-file.archivo-listo) { border-style: solid; }
+:is(.dropzone.tiene-archivo, .moodle-file-drop.tiene-archivo, .moodle-label-file.tiene-archivo) { border-style: solid; }
 @keyframes file-border-run { to { --file-border-angle: 360deg; } }
 @media (prefers-reduced-motion: reduce) { :is(.dropzone, .moodle-file-drop, .moodle-label-file)::after { animation: none; } }
 
@@ -664,7 +666,7 @@ a.pastilla:hover { border-color: var(--acento-borde); }
   .nav::-webkit-scrollbar { display: none; }
   .sidebar .nav-item { padding: 9px 12px; font-size: 13.5px; white-space: nowrap; flex: none; }
   /* El estado queda a la izquierda de los botones de tema y de usuario. */
-  .estado-servicio { margin: 0 110px 0 auto; padding: 0; border: 0; background: transparent; display: flex; gap: 10px; }
+  .estado-servicio { margin: 0 auto 0 0; padding: 0; border: 0; background: transparent; display: flex; gap: 10px; }
   .estado-servicio .servicio-mini { display: none; }
   /* Tema y usuario suben a la barra del menu, arriba a la derecha. */
   .barra-superior { position: fixed; top: 10px; right: 14px; z-index: 45; padding: 0; gap: 8px; }
@@ -678,7 +680,14 @@ a.pastilla:hover { border-color: var(--acento-borde); }
   .icono-tile.grande { width: 56px; height: 56px; }
   .herramientas, .herramientas.dos { grid-template-columns: 1fr; }
   .tabla-cabecera, .tabla-pie { padding: 16px; }
-  .tabla th, .tabla td { padding: 12px 14px; }
+  .tabla th, .tabla td { padding: 10px 12px; }
+  .tabla-contenedor, .tabla-scroll, .tabla-wrap { max-width: 100%; overflow-x: auto; -webkit-overflow-scrolling: touch; }
+  .tabla-scroll > table { min-width: 640px; }
+  .barra-superior { top: 8px; right: 10px; }
+  .sidebar { gap: 6px 10px; padding: 8px 10px; }
+  .contenido { padding: 12px 12px 28px; }
+  .panel-contenido { padding: 16px; }
+  .boton { max-width: 100%; white-space: normal; }
   .mosaicos { grid-template-columns: 1fr 1fr; gap: 12px; }
   .mosaico { padding: 16px; gap: 12px; }
   .mosaico .icono-tile { width: 44px; height: 44px; }
@@ -691,6 +700,32 @@ a.pastilla:hover { border-color: var(--acento-borde); }
 @media (max-width: 420px) {
   .mosaicos { grid-template-columns: 1fr; }
   .estado-servicio .servicio-linea span { display: none; }
+  .sidebar .nav-item { padding: 8px 10px; }
+  .sidebar .nav-item span { font-size: 12px; }
+}
+
+/* Evita que formularios, tablas y textos largos ensanchen el viewport. */
+@media (max-width: 1050px) {
+  .contenido, .principal, .panel, form, fieldset, section, article { min-width: 0; }
+  input, select, textarea, button { max-width: 100%; }
+  .workspace-tabs { max-width: 100%; overflow-x: auto; -webkit-overflow-scrolling: touch; }
+  table { max-width: 100%; }
+  .workspace-tabs, .nav, .tabla-scroll { overscroll-behavior-x: contain; }
+  .workspace-tabs a, .sidebar .nav-item { min-height: 40px; }
+  .pastillas { gap: 8px; }
+  .pastilla { max-width: 100%; white-space: normal; }
+  .form-row, .form-grid, .grid-formulario { grid-template-columns: repeat(auto-fit, minmax(min(100%, 260px), 1fr)); }
+}
+
+@media (max-width: 520px) {
+  .barra-superior { position: absolute; }
+  .estado-servicio { width: 100%; justify-content: flex-start; }
+  .sidebar { align-items: center; }
+  .marca { margin-right: auto; }
+  .nav { flex-basis: 100%; }
+  .tabla-cabecera, .tabla-pie { align-items: stretch; }
+  .tabla-cabecera .campo { width: 100%; min-width: 0; }
+  .boton, .boton.grande { min-height: 42px; }
 }
 
 @media (prefers-reduced-motion: reduce) {
