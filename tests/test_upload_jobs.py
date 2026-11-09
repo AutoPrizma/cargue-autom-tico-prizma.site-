@@ -135,15 +135,19 @@ def test_cancel_job_rejects_other_users_and_ignores_finished(trabajos_aislados):
 
 def test_public_job_status_only_for_owner_and_without_credentials(trabajos_aislados):
     trabajos_aislados["t5"] = _trabajo("t5", contrasena_prizma_temporal=CLAVE)
+    trabajos_aislados["t5"]["videos_camara"] = [{
+        "nombre": "Tema de prueba", "semana": "Semana 1", "miembro_zip": "video tema.webm",
+    }]
 
     estado = upload_jobs.public_job_status("t5", "ana")
 
     assert upload_jobs.public_job_status("t5", "beto") is None
     assert set(estado) == {
         "etapa", "mensaje", "total", "procesadas", "exitosas", "errores", "terminado",
-        "detalle_actividades", "reporte_disponible", "posicion_cola", "cancelar_solicitado",
+        "detalle_actividades", "videos_camara", "reporte_disponible", "posicion_cola", "cancelar_solicitado",
     }
     assert estado["reporte_disponible"] is False
+    assert estado["videos_camara"] == trabajos_aislados["t5"]["videos_camara"]
     assert not _contiene(estado, CLAVE)
 
 
@@ -177,6 +181,29 @@ def test_validate_access_and_enqueue(monkeypatch, trabajos_aislados, acceso_ok):
         assert (encolado, mensaje) == (False, "Credenciales rechazadas.")
         assert trabajo["etapa"] == "analizado"
         assert not _contiene(trabajo, CLAVE)
+
+
+def test_camera_video_selection_is_saved_and_controls_public_status(
+    monkeypatch, trabajos_aislados
+):
+    videos = [{"nombre": "Tema", "semana": "Semana 1", "miembro_zip": "video tema.webm"}]
+    trabajos_aislados["camera"] = _trabajo("camera", videos_camara=videos)
+    monkeypatch.setattr(upload_jobs, "CARGUES_ACTIVOS", upload_jobs.MAX_CARGUES_SIMULTANEOS)
+    monkeypatch.setattr(
+        upload_jobs,
+        "validar_credenciales_prizma",
+        lambda _usuario, _clave: {"ok": True},
+    )
+
+    resultado = upload_jobs.validate_access_and_enqueue(
+        "camera", "usuario", CLAVE,
+        incluir_videos_camara=False,
+    )
+
+    assert resultado == (True, "")
+    trabajo = trabajos_aislados["camera"]
+    assert trabajo["incluir_videos_camara"] is False
+    assert upload_jobs.public_job_status("camera", "ana")["videos_camara"] == []
 
 
 def test_validate_access_reserves_job_before_external_validation(

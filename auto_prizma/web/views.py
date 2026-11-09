@@ -140,12 +140,13 @@ def _pantalla_inicio(error, e):
         <section class="seccion-tipos">
             <div class="titulo-seccion">
                 <h2>Tipos de actividades</h2>
-                <p>Selecciona qué actividades deseas procesar.</p>
+                <p>Selecciona los tipos de actividades; marca WebM para incluir videos a cámara.</p>
             </div>
             <div class="grid-tipos">
                 {_tarjeta_tipo("ovi", "OVI", "Objetos Virtuales de Información", "tipo-verde", "ovi", True)}
                 {_tarjeta_tipo("ova", "OVA", "Objetos Virtuales de Aprendizaje", "tipo-azul", "ova", True)}
                 {_tarjeta_tipo("retos", "Retos Evaluativos", "Retos evaluativos en PDF", "tipo-morado", "reto", True)}
+                {_tarjeta_tipo("webm", "WebM", "Videos a cámara", "tipo-azul", "webm", False)}
                 {_tarjeta_tipo("test_evaluativo", "Test Evaluativo", "Exámenes desde Word", "tipo-naranja", "test", False, ' id="chk-test"')}
             </div>
 
@@ -202,7 +203,7 @@ def _dialogo_guia():
     pasos = [
         "Selecciona el archivo XLSX o CSV de la matriz.",
         "Sube el ZIP con los recursos correspondientes.",
-        "Selecciona los tipos de actividades y el formato (H5P o HTML).",
+        "Selecciona los tipos de actividades (incluido WebM para videos a cámara) y el formato H5P o HTML.",
         "Analiza, revisa y luego inicia el cargue.",
     ]
     consejos = [
@@ -332,6 +333,7 @@ def generar_html(
     trabajo_id=None,
     seleccion_actual=None,
     aviso=None,
+    incluir_videos_camara=True,
 ):
 
     def e(valor):
@@ -436,26 +438,10 @@ def generar_html(
             clase_tipo = (
                 "badge-pdf"
                 if actividad["tipo"] == "PDF"
-                else "badge-recurso"
-                if actividad["tipo"] == "VIDEO_CAMARA"
                 else "badge-html"
                 if actividad["tipo"] == "HTML"
                 else "badge-h5p"
             )
-            tipo_visible = (
-                "VIDEO A CÁMARA"
-                if actividad["tipo"] == "VIDEO_CAMARA"
-                else actividad["tipo"]
-            )
-            destino_tema = ""
-            if actividad["tipo"] == "VIDEO_CAMARA":
-                destino_tema = (
-                    '<small>Destino: '
-                    + e(hoja.get("programa") or "")
-                    + " · Tema: "
-                    + e(actividad.get("tema") or "sin tema detectado")
-                    + "</small>"
-                )
 
             archivo_drive = "Se resolverá desde el ZIP"
             estado_zip = "Se comprobará al cargar"
@@ -476,10 +462,10 @@ def generar_html(
                 </td>
                 <td>{e(actividad["semana"])}</td>
                 <td>{e(actividad["unidad"])}</td>
-                <td class="celda-actividad">{e(actividad["nombre"])}{destino_tema}</td>
+                <td class="celda-actividad">{e(actividad["nombre"])}</td>
                 <td><span class="badge {clase_categoria}">{e(etiqueta_categoria)}</span></td>
                 <td><span class="badge badge-recurso">{e(tipo_recurso)}</span></td>
-                <td><span class="badge {clase_tipo}">{e(tipo_visible)}</span></td>
+                <td><span class="badge {clase_tipo}">{e(actividad["tipo"])}</span></td>
                 <td class="celda-actividad" title="{e(archivo_drive)}">
                     <strong>{e(archivo_drive)}</strong>
                 </td>
@@ -487,7 +473,13 @@ def generar_html(
             </tr>
             """
 
-    total_seleccionadas = sum(tipos_recurso_seleccionados.values())
+    videos_camara = resultado.get("videos_camara") or []
+    total_videos_camara = len(videos_camara)
+    incluir_videos_camara = bool(incluir_videos_camara)
+    total_seleccionadas = sum(tipos_recurso_seleccionados.values()) + (
+        total_videos_camara if incluir_videos_camara else 0
+    )
+    total_seleccionables = total_actividades + total_videos_camara
     filtros_tipo_html = ""
     for tipo_recurso, cantidad in tipos_recurso_conteo.items():
         seleccionadas_tipo = tipos_recurso_seleccionados.get(tipo_recurso, 0)
@@ -504,6 +496,27 @@ def generar_html(
             <span class="filtro-recurso-texto">
                 <strong>{e(tipo_recurso)}</strong>
                 <small>{cantidad} actividad{"es" if cantidad != 1 else ""}</small>
+            </span>
+        </label>
+        """
+
+    if total_videos_camara:
+        filtros_tipo_html += f"""
+        <label class="filtro-recurso-item">
+            <input
+                type="checkbox"
+                class="filtro-tipo-recurso filtro-videos-camara"
+                data-tipo-recurso="Video a cámara"
+                data-cantidad="{total_videos_camara}"
+                name="videos_camara_seleccionados"
+                value="1"
+                form="form-iniciar-cargue"
+                {"checked" if incluir_videos_camara else ""}
+            >
+            <span class="filtro-recurso-check">{icon("check")}</span>
+            <span class="filtro-recurso-texto">
+                <strong>WebM</strong>
+                <small>{total_videos_camara} video{"s" if total_videos_camara != 1 else ""}</small>
             </span>
         </label>
         """
@@ -529,9 +542,7 @@ def generar_html(
     resumen_origen = (
         e(nombre_matriz or "Matriz local") + " · "
         + str(int((resultado.get("zip") or {}).get("total") or 0))
-        + " recurso(s) " + ("HTML" if modo_html else "H5P") + "/PDF"
-        + (" y .webm" if int((resultado.get("zip") or {}).get("webm") or 0) else "")
-        + " detectado(s) en el ZIP"
+        + " recurso(s) " + ("HTML" if modo_html else "H5P") + "/PDF detectado(s) en el ZIP"
     )
     encabezado_recurso = "Resolución de recurso"
     encabezado_estado = "Estado"
@@ -555,6 +566,30 @@ def generar_html(
         """
 
     bloque_preparacion = _preparation_block(resultado.get("preparacion"))
+    bloque_videos_camara = ""
+    if videos_camara:
+        resumen_videos = "".join(
+            "<li>" + e(item.get("semana")) + " · " + e(item.get("nombre"))
+            + (" — Recurso: " + e(item.get("nombre_recurso")) if item.get("nombre_recurso") else "")
+            + (" — " + e(item.get("miembro_zip")) if item.get("miembro_zip") else " — No se encontró el .webm coincidente en el ZIP")
+            + "</li>"
+            for item in videos_camara
+        )
+        bloque_videos_camara = f"""
+        <section class="panel videos-camara-panel">
+            <div class="titulo-bloque">
+                <h2>Videos a cámara</h2>
+                <p>Se buscará cada tema en PRIZMA. Solo se adjuntarán los videos marcados como “Video a cámara”; los videos de intro y cierre no se modifican.</p>
+                <ul>{resumen_videos}</ul>
+            </div>
+            <label class="campo-label" for="codigo-programa-camara">Código del programa</label>
+            <input id="codigo-programa-camara" class="campo-camara" type="text"
+                name="codigo_programa_video_camara" autocomplete="off" required>
+            <label class="campo-label" for="codigo-pensum-camara">Código del pensum</label>
+            <input id="codigo-pensum-camara" class="campo-camara" type="text"
+                name="codigo_pensum_video_camara" autocomplete="off" required>
+        </section>
+        """
 
     bloque_revision_h5p = ""
     revision_h5p = resultado.get("revision_h5p") or {}
@@ -630,7 +665,7 @@ def generar_html(
                 <p>Marca tipos completos para seleccionar rápido y ajusta actividades individuales en la tabla.</p>
             </div>
             <div class="selector-recursos-contador">
-                <strong id="contador-seleccionadas">{total_seleccionadas} de {total_actividades}</strong>
+                <strong id="contador-seleccionadas" data-total-videos-camara="{total_videos_camara}">{total_seleccionadas} de {total_seleccionables}</strong>
                 <span>actividades seleccionadas</span>
             </div>
         </div>
@@ -681,6 +716,7 @@ def generar_html(
             </div>
 
             <form id="form-iniciar-cargue" action="/iniciar/{trabajo_id}" method="post" autocomplete="off">
+                {bloque_videos_camara}
                 <label class="campo-label" for="usuario_prizma">Usuario PRIZMA</label>
                 <div class="campo-moderno">
                     {icon("usuario")}
@@ -790,6 +826,9 @@ _CSS_INICIO = r"""
 .archivo-cabecera .icono-tile .icono { width: 36px; height: 36px; }
 .campo-enlace { min-height: 60px; }
 .campo-enlace .icono { width: 22px; height: 22px; }
+.campo-camara { width: 100%; margin: 0 0 12px; padding: 12px 14px; border: 1px solid var(--borde); border-radius: 10px; background: var(--panel-2); color: var(--texto); }
+.videos-camara-panel { margin: 0 0 16px; }
+.videos-camara-panel ul { margin: 10px 0 0; padding-left: 20px; color: var(--muted); }
 
 .dropzone {
   display: grid; justify-items: center; gap: 6px; text-align: center;
@@ -1084,12 +1123,16 @@ _JS_INICIO = r"""
   var botonLimpiarSeleccion = document.getElementById('limpiar-seleccion-actividades');
 
   function actualizarEstadoSeleccion() {
-    var totalMarcadas = actividadesSeleccion.filter(function (item) { return item.checked; }).length;
+    var filtroCamara = document.querySelector('.filtro-videos-camara');
+    var cantidadCamara = contadorSeleccionadas ? Number(contadorSeleccionadas.dataset.totalVideosCamara || 0) : 0;
+    var totalMarcadas = actividadesSeleccion.filter(function (item) { return item.checked; }).length
+      + (filtroCamara && filtroCamara.checked ? cantidadCamara : 0);
     if (contadorSeleccionadas) {
-      contadorSeleccionadas.textContent = totalMarcadas + ' de ' + actividadesSeleccion.length;
+      contadorSeleccionadas.textContent = totalMarcadas + ' de ' + (actividadesSeleccion.length + cantidadCamara);
     }
     filtrosTipoRecurso.forEach(function (filtro) {
       var tipo = filtro.dataset.tipoRecurso || '';
+      if (tipo === 'Video a cámara') return;
       var delTipo = actividadesSeleccion.filter(function (actividad) {
         return (actividad.dataset.tipoRecurso || '') === tipo;
       });
@@ -1102,6 +1145,10 @@ _JS_INICIO = r"""
   filtrosTipoRecurso.forEach(function (filtro) {
     filtro.addEventListener('change', function () {
       var tipo = filtro.dataset.tipoRecurso || '';
+      if (tipo === 'Video a cámara') {
+        actualizarEstadoSeleccion();
+        return;
+      }
       actividadesSeleccion.forEach(function (actividad) {
         if ((actividad.dataset.tipoRecurso || '') === tipo) actividad.checked = filtro.checked;
       });
@@ -1114,12 +1161,16 @@ _JS_INICIO = r"""
   if (botonSeleccionarTodas) {
     botonSeleccionarTodas.addEventListener('click', function () {
       actividadesSeleccion.forEach(function (actividad) { actividad.checked = true; });
+      var filtroCamara = document.querySelector('.filtro-videos-camara');
+      if (filtroCamara) filtroCamara.checked = true;
       actualizarEstadoSeleccion();
     });
   }
   if (botonLimpiarSeleccion) {
     botonLimpiarSeleccion.addEventListener('click', function () {
       actividadesSeleccion.forEach(function (actividad) { actividad.checked = false; });
+      var filtroCamara = document.querySelector('.filtro-videos-camara');
+      if (filtroCamara) filtroCamara.checked = false;
       actualizarEstadoSeleccion();
     });
   }
@@ -1128,7 +1179,10 @@ _JS_INICIO = r"""
   if (formularioInicio) {
     formularioInicio.addEventListener('submit', function (evento) {
       var totalMarcadas = actividadesSeleccion.filter(function (item) { return item.checked; }).length;
-      if (actividadesSeleccion.length && totalMarcadas === 0) {
+      var filtroCamara = document.querySelector('.filtro-videos-camara');
+      var cantidadCamara = filtroCamara ? Number(filtroCamara.dataset.cantidad || 0) : 0;
+      if (filtroCamara && filtroCamara.checked) totalMarcadas += cantidadCamara;
+      if ((actividadesSeleccion.length + cantidadCamara) > 0 && totalMarcadas === 0) {
         evento.preventDefault();
         alert('Selecciona al menos una actividad para cargar en PRIZMA.');
         return;
@@ -1205,7 +1259,9 @@ _JS_INICIO = r"""
     var chkOvi = document.querySelector('input[name="ovi"]');
     var chkOva = document.querySelector('input[name="ova"]');
     var chkRetos = document.querySelector('input[name="retos"]');
-    var tieneRecursos = (chkOvi && chkOvi.checked) || (chkOva && chkOva.checked) || (chkRetos && chkRetos.checked);
+    var chkWebm = document.querySelector('input[name="webm"]');
+    var tieneRecursos = (chkOvi && chkOvi.checked) || (chkOva && chkOva.checked)
+      || (chkRetos && chkRetos.checked) || (chkWebm && chkWebm.checked);
     if (zip) zip.required = !!tieneRecursos;
     if (matriz) matriz.required = !!tieneRecursos;
   }
@@ -1230,7 +1286,7 @@ _JS_INICIO = r"""
   }
 
   if (chkTest) chkTest.addEventListener('change', toggleTest);
-  document.querySelectorAll('input[name="ovi"], input[name="ova"], input[name="retos"]').forEach(function (casilla) {
+  document.querySelectorAll('input[name="ovi"], input[name="ova"], input[name="retos"], input[name="webm"]').forEach(function (casilla) {
     casilla.addEventListener('change', ajustarRequeridosGenerales);
   });
 
