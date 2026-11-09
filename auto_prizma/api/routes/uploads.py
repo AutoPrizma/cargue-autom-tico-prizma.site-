@@ -67,8 +67,6 @@ def iniciar_trabajo(
             seleccion_actual=[],
         )
 
-    trabajo["seleccion_actividades"] = seleccion_validada
-
     usuario_prizma = usuario_prizma.strip()
     if not usuario_prizma or not contrasena_prizma:
         return generar_html(
@@ -86,6 +84,7 @@ def iniciar_trabajo(
         trabajo_id,
         usuario_prizma,
         contrasena_prizma,
+        seleccion_validada,
     )
 
     if not encolado:
@@ -329,6 +328,13 @@ _CSS_CARGUES = r"""
 @media (max-width: 700px) {
   .carga-card { grid-template-columns: 1fr; padding: 18px; }
 }
+@media (max-width: 520px) {
+  .carga-card { gap: 14px; padding: 14px; }
+  .curso-bloque { align-items: flex-start; gap: 10px; }
+  .accion-bloque { width: 100%; }
+  .metricas { gap: 4px; }
+  .metricas small { font-size: 10px; }
+}
 """
 
 
@@ -468,6 +474,7 @@ _CSS_PROGRESO = r"""
 .pie { margin-top: 18px; color: var(--muted); font-size: 12px; text-align: center; }
 @media (max-width: 1050px) { .zona { grid-template-columns: 1fr; } }
 @media (max-width: 680px) { .numeros { grid-template-columns: 1fr; } }
+@media (max-width: 520px) { .cabecera-progreso,.lista-panel,.estado-panel { padding: 16px; } .cabecera-titulo { align-items: flex-start; } .cabecera-titulo h1 { font-size: 20px; } .lista-actividades { max-height: 55vh; } .actividad-progreso { grid-template-columns: 22px minmax(0,1fr); padding: 10px; } .numero { padding: 14px; } }
 """
 
 _JS_PROGRESO = r"""

@@ -217,6 +217,69 @@ def test_combined_upload_rejects_invalid_evaluative_test_before_creating_jobs(
     assert set(_JOBS) == tests_previos
 
 
+@pytest.mark.parametrize(
+    ("matriz", "recursos", "mensaje"),
+    [
+        (None, _zip_recursos(), "Selecciona un archivo XLSX o CSV."),
+        (_matriz_xlsx(), b"esto no es un zip", "El ZIP no es válido."),
+    ],
+)
+def test_combined_upload_does_not_register_test_if_resource_validation_fails(
+    limpiar_trabajos, monkeypatch, matriz, recursos, mensaje
+):
+    from auto_prizma.evaluative_tests.models import (
+        DocumentTest,
+        Option,
+        Question,
+        Section,
+        TestDocument,
+    )
+    from auto_prizma.evaluative_tests.state import _JOBS
+
+    valid_document = TestDocument(
+        tests=[
+            DocumentTest(
+                title="Evaluación de prueba",
+                sections=[
+                    Section(
+                        code="multipleChoice",
+                        name="Selección múltiple",
+                        questions=[
+                            Question(
+                                prompt="¿Cuál es la respuesta?",
+                                options=[
+                                    Option("a", "Correcta", correct=True),
+                                    Option("b", "Incorrecta"),
+                                ],
+                                correct_option_letters=["a"],
+                            )
+                        ],
+                    )
+                ],
+            )
+        ]
+    )
+    monkeypatch.setattr(
+        "auto_prizma.evaluative_tests.parser.parse_docx_bytes",
+        lambda _content, source_name="": valid_document,
+    )
+    trabajos_previos = set(TRABAJOS)
+    tests_previos = set(_JOBS)
+
+    respuesta, nuevos = _analizar(
+        {"ovi": "1", "test_evaluativo": "1"},
+        matriz=matriz,
+        recursos=recursos,
+        test_docx=b"contenido docx de prueba",
+    )
+
+    assert respuesta.status_code == 200
+    assert mensaje in respuesta.text
+    assert nuevos == []
+    assert set(TRABAJOS) == trabajos_previos
+    assert set(_JOBS) == tests_previos
+
+
 # ============================================================
 # FORMATO HTML
 # ============================================================

@@ -25,6 +25,7 @@ from auto_prizma.core.storage import write_json_atomic, write_text_atomic
 from auto_prizma.automation.content_checks import inspeccionar_pdf_bytes
 from auto_prizma.domain.moodle_audit import (
     audit_row,
+    es_actividad_syllabus,
     interpret_activity_probe,
     summarize_audit_rows,
 )
@@ -38,6 +39,7 @@ MOODLE_AUDIT_JOBS = {}
 MOODLE_AUDIT_LOCK = threading.RLock()
 
 RUNNING_AUDIT_STATUSES = {"logging_in", "auditing"}
+MAX_TIMEOUTS_CONSECUTIVOS = 3
 
 
 def start_moodle_audit(owner, course_url, matrix_filename="", matrix_bytes=None):
@@ -51,6 +53,10 @@ def start_moodle_audit(owner, course_url, matrix_filename="", matrix_bytes=None)
         if os.path.splitext(matrix_filename)[1].lower() not in {".csv", ".xlsx"}:
             raise ValueError("La matriz debe ser un archivo CSV o XLSX.")
         matrix_rows, _ = _read_matrix(matrix_filename, matrix_bytes)
+        matrix_rows = [
+            row for row in matrix_rows
+            if not es_actividad_syllabus(row.get("title"))
+        ]
         if not matrix_rows:
             raise ValueError("La matriz no contiene filas de recursos para comparar.")
     owner = str(owner or "")
@@ -170,6 +176,8 @@ def _comparar_matriz(results, matrix_rows, complete=True):
 
     pendientes = list(enumerate(matrix_rows))
     for actual in results:
+        if actual.get("estado") == "omitido":
+            continue
         semana_actual = key(actual.get("semana"))
         titulo_actual = key(actual.get("actividad"))
         coincidencia = next((
@@ -292,18 +300,23 @@ def _run_moodle_audit(job):
                 if total else "El curso no muestra recursos en sus semanas."
             )
 
+        stop_reason = ""
+        timeouts_consecutivos = 0
         for indice, (nombre_semana, actividad) in enumerate(pendientes, start=1):
             if job.get("cancel_requested"):
+                break
+
+            if es_actividad_syllabus(actividad.get("titulo")):
                 with MOODLE_AUDIT_LOCK:
                     results.append({
                         "semana": nombre_semana,
                         "actividad": actividad["titulo"],
                         "tipo": actividad.get("tipo", ""),
-                        "estado": "no procesado",
+                        "estado": "omitido",
                         "renderiza": "",
                         "titulo_interno": "",
                         "coincide": None,
-                        "detalle": "El usuario canceló la auditoría.",
+                        "detalle": "Syllabus omitido por solicitud: la auditoría no lo abrió ni descargó.",
                     })
                 continue
 
@@ -320,18 +333,6 @@ def _run_moodle_audit(job):
 
             sonda = client.audit_activity(actividad["url"])
             if (sonda or {}).get("cancelled"):
-                with MOODLE_AUDIT_LOCK:
-                    for semana_pendiente, actividad_pendiente in pendientes[indice - 1:]:
-                        results.append({
-                            "semana": semana_pendiente,
-                            "actividad": actividad_pendiente["titulo"],
-                            "tipo": actividad_pendiente.get("tipo", ""),
-                            "estado": "no procesado",
-                            "renderiza": "",
-                            "titulo_interno": "",
-                            "coincide": None,
-                            "detalle": "El usuario canceló la auditoría.",
-                        })
                 break
             veredicto = interpret_activity_probe(sonda, actividad["titulo"])
 
@@ -357,28 +358,45 @@ def _run_moodle_audit(job):
             with MOODLE_AUDIT_LOCK:
                 results.append(fila)
 
+            if (sonda or {}).get("timeout"):
+                timeouts_consecutivos += 1
+            else:
+                timeouts_consecutivos = 0
+            if timeouts_consecutivos >= MAX_TIMEOUTS_CONSECUTIVOS:
+                stop_reason = (
+                    "La auditoría se detuvo porque Moodle no respondió al abrir "
+                    + str(MAX_TIMEOUTS_CONSECUTIVOS)
+                    + " recursos consecutivos. El reporte conserva lo revisado hasta aquí."
+                )
+                break
+
         cancelled = bool(job.get("cancel_requested"))
-        _comparar_matriz(results, job.get("matrix_rows"), complete=not cancelled)
+        _comparar_matriz(
+            results,
+            job.get("matrix_rows"),
+            complete=not cancelled and not stop_reason,
+        )
         report = audit_report_from_results(
-            results, "Cancelado por el usuario." if cancelled else ""
+            results,
+            "Cancelado por el usuario." if cancelled else stop_reason,
         )
         paths = write_moodle_audit_report(job, report)
         with MOODLE_AUDIT_LOCK:
             job.update({
-                "status": "cancelled" if cancelled else "completed",
+                "status": "cancelled" if cancelled else "stopped" if stop_reason else "completed",
                 "message": (
-                    "Auditoría cancelada por el usuario." if cancelled
-                    else "Auditoría del curso terminada."
+                    "Auditoría cancelada por el usuario." if cancelled else
+                    stop_reason or "Auditoría del curso terminada."
                 ),
                 "report": report,
                 "report_paths": paths,
                 "finished": True,
                 "progress": {
                     "index": len(results),
-                    "total": max(total, len(results)),
+                    "total": len(results),
                     "week": "",
                     "title": "",
-                    "phase": "Cancelado" if cancelled else "Completado",
+                    "phase": "Cancelado" if cancelled else "Detenido" if stop_reason else "Completado",
                 },
             })
     except Exception as exc:

@@ -364,6 +364,7 @@ def test_auditoria_captura_descarga_directa_y_reutiliza_la_pestana(tmp_path):
     class Page:
         def __init__(self):
             self.handlers = {}
+            self.goto_count = 0
 
         def is_closed(self):
             return False
@@ -376,8 +377,17 @@ def test_auditoria_captura_descarga_directa_y_reutiliza_la_pestana(tmp_path):
                 self.handlers.pop(name)
 
         def goto(self, *_args, **_kwargs):
-            self.handlers["download"](Download())
+            self.goto_count += 1
+            if self.goto_count > 1:
+                self.handlers["download"](Download())
             raise RuntimeError("Download is starting")
+
+        def wait_for_event(self, event, timeout):
+            assert event == "download"
+            assert timeout == 3_000
+            descarga = Download()
+            self.handlers["download"](descarga)
+            return descarga
 
     class Context:
         def __init__(self):

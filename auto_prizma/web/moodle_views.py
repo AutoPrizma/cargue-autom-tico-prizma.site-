@@ -40,6 +40,8 @@ _CSS_MOODLE = """
 @media(max-width:800px){.moodle-label-tool{grid-template-columns:1fr}.moodle-label-cards{grid-template-columns:1fr 1fr}}
 @media(max-width:520px){.moodle-form-actions,.moodle-actions{display:grid}.moodle-form-actions .boton,.moodle-actions .boton{width:100%}}
 @media(max-width:520px){.moodle-label-info{padding:16px}.moodle-label-content{padding:0}.moodle-label-cards{grid-template-columns:1fr}.moodle-label-actions .boton{width:100%}}
+@media(max-width:700px){.moodle-label-examples{grid-template-columns:repeat(2,minmax(0,1fr))}.moodle-week-body{padding:0 12px 14px}.moodle-week>summary{padding:12px 14px}.moodle-item{grid-template-columns:22px minmax(0,1fr);gap:8px}.moodle-item>.badge{grid-column:2;justify-self:start}.moodle-queue-item{grid-template-columns:24px minmax(0,1fr)}.moodle-queue-item>.badge{grid-column:2;justify-self:start}.moodle-run-number{padding:12px;gap:9px}.moodle-run-number strong{font-size:21px}}
+@media(max-width:420px){.moodle-label-examples,.moodle-run-numbers,.moodle-counts{grid-template-columns:minmax(0,1fr)}.moodle-panel{padding:14px}.moodle-overview{padding:14px}.moodle-stats{gap:8px 14px}.moodle-stat strong{font-size:21px}.moodle-heading{gap:10px}.moodle-heading .icono-tile{flex-basis:44px;width:44px;height:44px}.moodle-heading h1{font-size:22px}.moodle-table-wrap{max-width:calc(100vw - 32px)}}
 """
 
 # Estado de cada fila en la vista previa: (texto, badge, qué significa y qué hacer).

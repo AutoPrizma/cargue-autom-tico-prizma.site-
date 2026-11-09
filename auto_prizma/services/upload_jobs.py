@@ -576,25 +576,57 @@ def create_analyzed_job(
     return trabajo_id, resultado
 
 
-def validate_access_and_enqueue(trabajo_id, usuario_prizma, contrasena_prizma):
-    """Valida las credenciales de PRIZMA y, si son correctas, encola el trabajo.
+def validate_access_and_enqueue(
+    trabajo_id,
+    usuario_prizma,
+    contrasena_prizma,
+    seleccion_actividades=None,
+):
+    """Reserva el trabajo, valida credenciales y lo encola si sigue vigente.
 
     Returns:
-        (True, "") si el trabajo quedo en cola, o (False, mensaje) si PRIZMA
-        rechazo el acceso o no respondio; en ese caso el trabajo vuelve a la
-        etapa "analizado" para poder reintentar.
+        (True, "") si el trabajo quedo en cola, o (False, mensaje) si ya habia
+        sido iniciado, se cancelo o PRIZMA rechazo/no respondio. La reserva de
+        etapa se hace bajo el lock; la validacion externa ocurre sin lock.
     """
-    trabajo = TRABAJOS[trabajo_id]
-    trabajo["etapa"] = "validando_login"
-    trabajo["mensaje"] = "Validando usuario y contraseña en PRIZMA..."
-    validacion = validar_credenciales_prizma(usuario_prizma, contrasena_prizma)
+    with COLA_CONDICION:
+        trabajo = TRABAJOS.get(trabajo_id)
+        if not trabajo or trabajo.get("etapa") not in {"analizado", "error"}:
+            return False, "Este trabajo ya fue iniciado."
+        trabajo["etapa"] = "validando_login"
+        trabajo["mensaje"] = "Validando usuario y contraseña en PRIZMA..."
+        if seleccion_actividades is not None:
+            trabajo["seleccion_actividades"] = seleccion_actividades
 
-    if not validacion.get("ok"):
-        trabajo["etapa"] = "analizado"
-        trabajo["mensaje"] = validacion.get("mensaje", "No fue posible validar el acceso a PRIZMA.")
-        return False, trabajo["mensaje"]
+    try:
+        validacion = validar_credenciales_prizma(usuario_prizma, contrasena_prizma)
+    except Exception:
+        validacion = {
+            "ok": False,
+            "mensaje": "No fue posible validar el acceso a PRIZMA. Puedes intentarlo de nuevo.",
+        }
 
-    _encolar_trabajo(trabajo_id, usuario_prizma, contrasena_prizma)
+    with COLA_CONDICION:
+        trabajo = TRABAJOS.get(trabajo_id)
+        if not trabajo:
+            return False, "Trabajo no encontrado."
+        if trabajo.get("cancelar_solicitado"):
+            trabajo.pop("cancelar_solicitado", None)
+            trabajo["etapa"] = "cancelado"
+            trabajo["mensaje"] = "Cargue cancelado durante la validación de acceso."
+            trabajo["terminado"] = True
+            COLA_CONDICION.notify_all()
+            return False, trabajo["mensaje"]
+        if trabajo.get("etapa") != "validando_login":
+            return False, "Este trabajo ya no está disponible para iniciar."
+        if not validacion.get("ok"):
+            trabajo["etapa"] = "analizado"
+            trabajo["mensaje"] = validacion.get(
+                "mensaje", "No fue posible validar el acceso a PRIZMA."
+            )
+            return False, trabajo["mensaje"]
+
+        _encolar_trabajo(trabajo_id, usuario_prizma, contrasena_prizma)
     return True, ""
 
 
