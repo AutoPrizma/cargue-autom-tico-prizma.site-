@@ -24,7 +24,10 @@ from auto_prizma.core.config import (
 )
 from auto_prizma.services.auth import USUARIO_ACTUAL, _es_de
 from auto_prizma.services.history import _nombre_reporte, _registrar_reporte_final
-from auto_prizma.services.matrix_analysis import _parsear_datos_academicos
+from auto_prizma.services.matrix_analysis import (
+    _parsear_datos_academicos,
+    detectar_videos_a_camara,
+)
 
 
 # ============================================================
@@ -142,6 +145,13 @@ def ejecutar_cargue_con_historial(
             formato_recurso=trabajo.get("formato_recurso") or FORMATO_RECURSO_POR_DEFECTO,
             preparacion=trabajo.get("preparacion"),
             ruta_syllabus=trabajo.get("ruta_syllabus") or "",
+            videos_camara=(
+                (trabajo.get("videos_camara") or [])
+                if trabajo.get("incluir_videos_camara", True)
+                else []
+            ),
+            codigo_programa_video_camara=trabajo.get("codigo_programa_video_camara") or "",
+            codigo_pensum_video_camara=trabajo.get("codigo_pensum_video_camara") or "",
         )
     finally:
         USUARIO_ACTUAL.reset(testigo_usuario)
@@ -448,6 +458,7 @@ def create_analyzed_job(
     nombre_syllabus="",
     linea_academica="",
     nivel_pensum="",
+    procesar_webm=False,
 ):
     """Registra un trabajo de cargue a partir de un analisis valido.
 
@@ -520,6 +531,11 @@ def create_analyzed_job(
     videos = motor_prizma_modulo.detect_assignment_videos(contenido_zip)
     preparacion["video_intro"] = videos.get("intro", "")
     preparacion["video_cierre"] = videos.get("closing", "")
+    videos_camara = (
+        detectar_videos_a_camara(contenido_excel, contenido_zip)
+        if procesar_webm
+        else []
+    )
 
     carpeta_temp = os.path.join(TEMP_DIR, trabajo_id)
     os.makedirs(carpeta_temp, exist_ok=True)
@@ -540,6 +556,7 @@ def create_analyzed_job(
         "procesar_ovi": procesar_ovi,
         "procesar_ova": procesar_ova,
         "procesar_retos": procesar_retos,
+        "procesar_webm": bool(procesar_webm),
         "formato_recurso": "HTML" if modo_html else "H5P",
         "etapa": "analizado",
         "mensaje": "Archivos analizados correctamente.",
@@ -556,6 +573,8 @@ def create_analyzed_job(
         "creado_en": _ahora_colombia_iso(),
         "cancelar_solicitado": False,
         "preparacion": preparacion,
+        "videos_camara": videos_camara,
+        "procesar_webm": bool(procesar_webm),
         "ruta_syllabus": ruta_syllabus,
     }
 
@@ -565,6 +584,7 @@ def create_analyzed_job(
         "nombre_matriz": nombre_matriz,
         "formato_recurso": "HTML" if modo_html else "H5P",
         "preparacion": preparacion,
+        "videos_camara": videos_camara,
     }
 
     if test_info is not None:
@@ -581,6 +601,9 @@ def validate_access_and_enqueue(
     usuario_prizma,
     contrasena_prizma,
     seleccion_actividades=None,
+    codigo_programa_video_camara="",
+    codigo_pensum_video_camara="",
+    incluir_videos_camara=True,
 ):
     """Reserva el trabajo, valida credenciales y lo encola si sigue vigente.
 
@@ -625,6 +648,15 @@ def validate_access_and_enqueue(
                 "mensaje", "No fue posible validar el acceso a PRIZMA."
             )
             return False, trabajo["mensaje"]
+
+        trabajo["incluir_videos_camara"] = bool(incluir_videos_camara)
+        if trabajo.get("videos_camara") and incluir_videos_camara:
+            trabajo["codigo_programa_video_camara"] = str(
+                codigo_programa_video_camara or ""
+            ).strip()
+            trabajo["codigo_pensum_video_camara"] = str(
+                codigo_pensum_video_camara or ""
+            ).strip()
 
         _encolar_trabajo(trabajo_id, usuario_prizma, contrasena_prizma)
     return True, ""
@@ -743,6 +775,11 @@ def public_job_status(trabajo_id, usuario):
         "errores": trabajo["errores"],
         "terminado": trabajo["terminado"],
         "detalle_actividades": trabajo.get("detalle_actividades", []),
+        "videos_camara": (
+            trabajo.get("videos_camara", [])
+            if trabajo.get("incluir_videos_camara", True)
+            else []
+        ),
         "reporte_disponible": os.path.isfile(trabajo["ruta_reporte"]),
         "posicion_cola": _posicion_en_cola(trabajo_id),
         "cancelar_solicitado": bool(trabajo.get("cancelar_solicitado")),

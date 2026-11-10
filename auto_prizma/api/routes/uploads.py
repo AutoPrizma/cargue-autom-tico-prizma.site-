@@ -47,6 +47,9 @@ def iniciar_trabajo(
     usuario_prizma: str = Form(...),
     contrasena_prizma: str = Form(...),
     actividades_seleccionadas: list[str] = Form(default=[]),
+    codigo_programa_video_camara: str = Form(default=""),
+    codigo_pensum_video_camara: str = Form(default=""),
+    videos_camara_seleccionados: str = Form(default=""),
 ):
     trabajo = TRABAJOS.get(trabajo_id)
     if not trabajo or not _es_de(trabajo, _usuario_actual()):
@@ -56,7 +59,8 @@ def iniciar_trabajo(
         actividades_seleccionadas,
         trabajo.get("resultado_analisis") or {},
     )
-    if not seleccion_validada:
+    incluir_videos_camara = videos_camara_seleccionados == "1"
+    if not seleccion_validada and not (incluir_videos_camara and trabajo.get("videos_camara")):
         return generar_html(
             resultado=trabajo.get("resultado_analisis"),
             trabajo_id=trabajo_id,
@@ -65,6 +69,7 @@ def iniciar_trabajo(
                 "Puedes elegir por tipo de recurso o actividad individual."
             ),
             seleccion_actual=[],
+            incluir_videos_camara=incluir_videos_camara,
         )
 
     usuario_prizma = usuario_prizma.strip()
@@ -74,6 +79,19 @@ def iniciar_trabajo(
             trabajo_id=trabajo_id,
             error="Debes ingresar el usuario y la contraseña de PRIZMA.",
             seleccion_actual=seleccion_validada,
+            incluir_videos_camara=incluir_videos_camara,
+        )
+
+    if incluir_videos_camara and trabajo.get("videos_camara") and (
+        not codigo_programa_video_camara.strip()
+        or not codigo_pensum_video_camara.strip()
+    ):
+        return generar_html(
+            resultado=trabajo.get("resultado_analisis"),
+            trabajo_id=trabajo_id,
+            error="Para cargar los videos a cámara, indica el código del programa y el código del pensum.",
+            seleccion_actual=seleccion_validada,
+            incluir_videos_camara=incluir_videos_camara,
         )
 
     if trabajo.get("etapa") not in ["analizado", "error"]:
@@ -85,6 +103,9 @@ def iniciar_trabajo(
         usuario_prizma,
         contrasena_prizma,
         seleccion_validada,
+        codigo_programa_video_camara=codigo_programa_video_camara,
+        codigo_pensum_video_camara=codigo_pensum_video_camara,
+        incluir_videos_camara=incluir_videos_camara,
     )
 
     if not encolado:
@@ -93,6 +114,7 @@ def iniciar_trabajo(
             trabajo_id=trabajo_id,
             error=mensaje_error,
             seleccion_actual=seleccion_validada,
+            incluir_videos_camara=incluir_videos_camara,
         )
 
     html_progreso = _pagina_progreso()
@@ -381,6 +403,11 @@ def _pagina_progreso(
     <section class="zona">
         <div class="panel lista-panel">
             <h2 class="titulo-panel">__LISTA_TITULO__</h2>
+            <section id="videos-camara-progreso" class="videos-camara-progreso" hidden>
+                <h3>Videos a cámara</h3>
+                <p>Se procesan por separado de las actividades normales.</p>
+                <ul id="lista-videos-camara"></ul>
+            </section>
             <div id="lista-actividades" class="lista-actividades">
                 <div class="actividad-progreso">Preparando lista de actividades...</div>
             </div>
@@ -460,6 +487,11 @@ _CSS_PROGRESO = r"""
 .actividad-omitida { background: var(--ambar-suave); }
 .actividad-error-fila { background: var(--rojo-suave); }
 .actividad-procesando { background: var(--acento-suave); box-shadow: inset 3px 0 0 var(--acento); }
+.videos-camara-progreso { margin: 0 0 14px; padding: 14px 16px; border: 1px solid var(--borde); border-left: 4px solid var(--acento); border-radius: 12px; background: var(--panel-2); }
+.videos-camara-progreso h3 { margin: 0; color: var(--texto); font-size: 15px; }
+.videos-camara-progreso p { margin: 4px 0 8px; color: var(--muted); font-size: 12px; }
+.videos-camara-progreso ul { margin: 0; padding-left: 19px; color: var(--texto-2); font-size: 13px; }
+.videos-camara-progreso li + li { margin-top: 4px; }
 .estado-caja { padding: 16px; margin-bottom: 14px; border: 1px solid var(--borde); border-radius: 12px; background: var(--panel-2); }
 .estado-caja span { display: block; color: var(--muted); font-size: 12px; }
 .estado-caja strong { display: block; margin-top: 6px; font-size: 14px; line-height: 1.45; color: var(--texto); }
@@ -537,6 +569,28 @@ function renderizarActividades(actividades) {
     document.getElementById("actividad-actual").innerText = actual;
 }
 
+function renderizarVideosCamara(videos) {
+    const panel = document.getElementById("videos-camara-progreso");
+    const lista = document.getElementById("lista-videos-camara");
+    if (!Array.isArray(videos) || videos.length === 0) {
+        panel.hidden = true;
+        lista.innerHTML = "";
+        return;
+    }
+
+    lista.innerHTML = videos.map((video) => {
+        const semana = video.semana ? escaparHtml(video.semana) + " · " : "";
+        const recurso = video.nombre_recurso
+            ? " — Recurso: " + escaparHtml(video.nombre_recurso)
+            : "";
+        const archivo = video.miembro_zip
+            ? " — " + escaparHtml(video.miembro_zip)
+            : " — No se encontró el .webm coincidente en el ZIP";
+        return "<li>" + semana + escaparHtml(video.nombre || "Tema no identificado") + recurso + archivo + "</li>";
+    }).join("");
+    panel.hidden = false;
+}
+
 async function revisarEstado() {
     try {
         const respuesta = await fetch(estadoUrl);
@@ -558,6 +612,7 @@ async function revisarEstado() {
         document.getElementById("total-actividades").innerText = datos.total || "—";
 
         renderizarActividades(datos.detalle_actividades);
+        renderizarVideosCamara(datos.videos_camara);
 
         let porcentaje = 0;
         if (datos.total > 0) {
