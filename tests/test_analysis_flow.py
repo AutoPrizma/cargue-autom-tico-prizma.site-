@@ -54,35 +54,6 @@ def _zip_recursos():
     return salida.getvalue()
 
 
-def _matriz_video_camara():
-    libro = Workbook()
-    hoja = libro.active
-    hoja.title = "Curso WebM"
-    hoja["A1"] = "Programa de prueba"
-    hoja["A2"] = "Curso de prueba"
-    hoja["A4"] = "Semana correspondiente"
-    hoja["C6"] = "1.1"
-    hoja["D6"] = "Características, Operaciones básicas"
-    hoja["A7"] = "Semana 1"
-    hoja["B7"] = "Unidad 1"
-    hoja["D7"] = "Fundamentos de las listas doblemente enlazadas"
-    hoja["E7"] = "OVI"
-    hoja["F7"] = "Video a cámara"
-    salida = io.BytesIO()
-    libro.save(salida)
-    return salida.getvalue()
-
-
-def _zip_video_camara():
-    salida = io.BytesIO()
-    with zipfile.ZipFile(salida, "w") as archivo:
-        archivo.writestr(
-            "Fundamentos de las listas doblemente enlazadas.webm",
-            b"webm de prueba",
-        )
-    return salida.getvalue()
-
-
 def _analizar(datos=None, matriz=None, recursos=None, test_docx=None, syllabus=None):
     archivos = {}
     if matriz is not None:
@@ -150,12 +121,11 @@ def test_analyze_file_mode_registers_job_and_saves_files(limpiar_trabajos):
     assert trabajo["ruta_reporte"].endswith(" - " + trabajo["id"][:6] + ".csv")
     assert set(trabajo) == {
         "id", "ruta_excel", "ruta_zip", "carpeta_temp", "ruta_reporte",
-        "procesar_ovi", "procesar_ova", "procesar_retos", "procesar_webm", "formato_recurso", "etapa", "mensaje",
+        "procesar_ovi", "procesar_ova", "procesar_retos", "formato_recurso", "etapa", "mensaje",
         "total", "procesadas", "exitosas", "errores", "terminado",
         "detalle_actividades", "nombre_matriz", "usuario_app", "cursos",
         "historial_registrado", "creado_en", "cancelar_solicitado",
         "resultado_analisis", "preparacion", "ruta_syllabus",
-        "videos_camara",
     }
 
     assert trabajo["ruta_syllabus"] == ""
@@ -169,72 +139,11 @@ def test_analyze_file_mode_registers_job_and_saves_files(limpiar_trabajos):
     }
 
     resultado = trabajo["resultado_analisis"]
-    assert set(resultado) == {
-        "hojas", "zip", "nombre_matriz", "formato_recurso", "preparacion",
-        "videos_camara",
-    }
+    assert set(resultado) == {"hojas", "zip", "nombre_matriz", "formato_recurso", "preparacion"}
     assert resultado["preparacion"] == trabajo["preparacion"]
     assert trabajo["formato_recurso"] == resultado["formato_recurso"] == "H5P"
     assert trabajo["id"] in respuesta.text
     assert "Previsualización y títulos H5P" in respuesta.text
-
-
-def test_webm_only_creates_review_with_camera_video_selected(limpiar_trabajos):
-    respuesta, nuevos = _analizar(
-        {"webm": "1"},
-        matriz=_matriz_video_camara(),
-        recursos=_zip_video_camara(),
-    )
-
-    assert respuesta.status_code == 200
-    assert len(nuevos) == 1
-    trabajo = nuevos[0]
-    assert trabajo["procesar_webm"] is True
-    assert trabajo["procesar_ovi"] is False
-    assert trabajo["procesar_ova"] is False
-    assert trabajo["procesar_retos"] is False
-    assert len(trabajo["videos_camara"]) == 1
-    assert "name=\"videos_camara_seleccionados\"" in respuesta.text
-    assert "name=\"actividades_seleccionadas\"" not in respuesta.text
-    assert "Fundamentos de las listas doblemente enlazadas.webm" in respuesta.text
-
-
-def test_inicio_admite_solo_webm_sin_activar_otros_tipos(
-    limpiar_trabajos, monkeypatch
-):
-    respuesta, nuevos = _analizar(
-        {"webm": "1"},
-        matriz=_matriz_video_camara(),
-        recursos=_zip_video_camara(),
-    )
-    trabajo_id = nuevos[0]["id"]
-    llamada = {}
-
-    def validar_y_encolar(*args, **kwargs):
-        llamada["seleccion"] = args[3]
-        llamada.update(kwargs)
-        return True, ""
-
-    monkeypatch.setattr(
-        "auto_prizma.api.routes.uploads.validate_access_and_enqueue",
-        validar_y_encolar,
-    )
-    inicio = _cliente().post(
-        f"/iniciar/{trabajo_id}",
-        data={
-            "usuario_prizma": "prueba",
-            "contrasena_prizma": "no-se-registra",
-            "codigo_programa_video_camara": "V2204",
-            "codigo_pensum_video_camara": "22042",
-            "videos_camara_seleccionados": "1",
-        },
-    )
-
-    assert inicio.status_code == 200
-    assert llamada["seleccion"] == []
-    assert llamada["incluir_videos_camara"] is True
-    assert "V2204" == llamada["codigo_programa_video_camara"]
-    assert "22042" == llamada["codigo_pensum_video_camara"]
 
 
 @pytest.mark.parametrize(
@@ -397,7 +306,7 @@ def test_analyze_html_format_marks_interactive_activities_as_html(limpiar_trabaj
     tipos = {a["nombre"]: a["tipo"] for a in resultado["hojas"][0]["actividades"]}
     assert tipos == {"Infografía de costos": "HTML", "Lectura guía": "PDF", "Reto 1": "PDF"}
     assert resultado["hojas"][0]["html"] == 1 and resultado["hojas"][0]["h5p"] == 0
-    assert resultado["zip"] == {"h5p": 0, "pdf": 1, "html": 1, "total": 2}
+    assert resultado["zip"] == {"h5p": 0, "pdf": 1, "html": 1, "webm": 0, "total": 2}
     assert '<span class="badge badge-html">HTML</span>' in respuesta.text
     assert "recurso(s) HTML/PDF detectado(s) en el ZIP" in respuesta.text
 
@@ -411,6 +320,37 @@ def test_analyze_rejects_unknown_resource_format(limpiar_trabajos):
 
     assert "Formato de recurso no válido" in respuesta.text
     assert nuevos == []
+
+
+def test_matrix_analysis_includes_camera_video_and_zip_webm():
+    from auto_prizma.services.matrix_analysis import analizar_excel, analizar_zip
+
+    libro = Workbook()
+    hoja = libro.active
+    hoja.title = "Curso A"
+    hoja["A1"] = "Administración de Empresas"
+    hoja["A2"] = "Contabilidad I"
+    hoja["A4"] = "Semana correspondiente"
+    hoja["C5"] = "1.1"
+    hoja["D5"] = "Introducción a la unidad"
+    hoja["A6"] = 1
+    hoja["D6"] = "Video de bienvenida"
+    hoja["E6"] = "OVI"
+    hoja["F6"] = "Video a cámara"
+    contenido = io.BytesIO()
+    libro.save(contenido)
+
+    hojas = analizar_excel(contenido.getvalue())
+    zip_bytes = io.BytesIO()
+    with zipfile.ZipFile(zip_bytes, "w") as archivo:
+        archivo.writestr("Video_bienvenida.webm", b"webm")
+    resumen_zip = analizar_zip(zip_bytes.getvalue())
+
+    video = hojas[0]["actividades"][0]
+    assert video["tipo"] == "VIDEO_CAMARA"
+    assert video["tema"] == "Introducción a la unidad"
+    assert video["codigo_tema"] == "1.1"
+    assert resumen_zip["webm"] == 1 and resumen_zip["total"] == 1
 
 
 def test_html_file_upload_uses_zip_without_external_resource_validation(limpiar_trabajos):

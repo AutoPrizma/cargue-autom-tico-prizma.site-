@@ -51,7 +51,6 @@ async def analizar(
     ovi: str | None = Form(default=None),
     ova: str | None = Form(default=None),
     retos: str | None = Form(default=None),
-    webm: str | None = Form(default=None),
     test_evaluativo: str | None = Form(default=None),
     test_archivo_docx: UploadFile | None = File(default=None),
     formato_recurso: str = Form(default="H5P"),
@@ -64,15 +63,12 @@ async def analizar(
         procesar_ovi = ovi is not None
         procesar_ova = ova is not None
         procesar_retos = retos is not None
-        procesar_webm = webm is not None
         procesar_test = test_evaluativo is not None
-        procesar_recursos = (
-            procesar_ovi or procesar_ova or procesar_retos or procesar_webm
-        )
+        procesar_recursos = procesar_ovi or procesar_ova or procesar_retos
 
         if not procesar_recursos and not procesar_test:
             return generar_html(
-                error="Selecciona al menos una categoría: OVI, OVA, Retos Evaluativos, WebM o Test Evaluativo."
+                error="Selecciona al menos una categoría: OVI, OVA, Retos Evaluativos o Test Evaluativo."
             )
 
         # ====================================================
@@ -214,9 +210,7 @@ async def analizar(
             return generar_html(error="El ZIP no es válido.")
 
         revision_h5p = None
-        if formato_recurso == "H5P" and any(
-            hoja.get("actividades") for hoja in hojas
-        ):
+        if formato_recurso == "H5P":
             revision_h5p = preview_h5p_titles(contenido_zip, hojas, TEMP_DIR)
 
         # Registrar el Test combinado solo cuando matriz y ZIP pasaron todas
@@ -260,7 +254,6 @@ async def analizar(
             nombre_syllabus=nombre_syllabus,
             linea_academica=linea_academica,
             nivel_pensum=nivel_pensum,
-            procesar_webm=procesar_webm,
         )
         resultado_revision = dict(resultado)
         if revision_h5p is not None:
@@ -288,7 +281,6 @@ async def analizar(
             trabajo_id=trabajo_id,
             seleccion_actual=faltantes or None,
             aviso=aviso_preseleccion,
-            incluir_videos_camara=procesar_webm,
         )
 
     except Exception as e:

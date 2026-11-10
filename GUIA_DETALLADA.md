@@ -339,18 +339,19 @@ La matriz puede tener varias hojas; cada hoja que tenga la cabecera esperada se 
 | Columna `A` (fila de cabecera) | El texto **Semana correspondiente**, en alguna de las primeras 30 filas. Las actividades empiezan en la fila siguiente. |
 | Columna `A` | Semana |
 | Columna `B` | Unidad |
-| Columna `D` | Nombre de la actividad |
+| Columna `C` | Código del tema en su fila de título (por ejemplo, `1.1`) |
+| Columna `D` | Nombre de la actividad o título del tema |
 | Columna `E` | Categoría: `OVI`, `OVA` o `Challenge` (reto evaluativo). Las filas con otra categoría se ignoran. |
 | Columna `F` | Tipo de recurso |
 | Columna `G` | Referencia opcional al recurso; los archivos se resuelven únicamente desde el ZIP local |
 
-Las filas sin nombre o sin categoría se omiten.
+Las filas sin nombre o sin categoría se omiten, salvo títulos de tema que identifican el código en C y el nombre en D. Las filas `Video a cámara` requieren un tema asociado.
 
 ### Pasos en la aplicación
 
 1. **Matriz:** selecciona un archivo local `.xlsx` o `.csv`. Los recursos se adjuntan desde el ZIP seleccionado; las referencias de la columna G no se consultan.
-2. **Recursos:** subir el ZIP con los archivos H5P (o HTML) y PDF de las actividades. El ZIP debe traer también los videos de intro/cierre si quieres cargarlos a la ficha.
-3. **Syllabus y preparación (opcional):** adjunta el PDF del syllabus y completa **Línea académica** (`código de programa código de pensum código de asignatura nombre de asignatura`) y **Nivel de pensum**. Ambos campos van juntos: uno vacío y otro con valor no se acepta; si los dejas vacíos, la preparación se omite y el cargue sigue normal.
+2. **Recursos:** subir el ZIP con los archivos H5P (o HTML), PDF y videos a cámara `.webm`. El ZIP debe traer también los videos de intro/cierre si quieres cargarlos a la ficha.
+3. **Syllabus y preparación (opcional):** adjunta el PDF del syllabus y completa **Línea académica** (`código de programa código de pensum código de asignatura nombre de asignatura`) y **Nivel de pensum**. Ambos campos van juntos; si los dejas vacíos, la preparación se omite y el cargue sigue normal.
 4. **Categorías:** marcar OVI, OVA, Retos evaluativos y/o Test evaluativo, y elegir el **formato de los recursos interactivos**: *H5P* o *HTML* (ver abajo).
 5. **Analizar:** revisar las actividades encontradas, el recurso asignado a cada una, las advertencias y el bloque **Preparación de la asignatura** con lo que se hará en la ficha del curso.
 6. **Iniciar:** seleccionar las actividades, ingresar usuario y contraseña de PRIZMA e iniciar. Si ya hay 2 cargues en curso, el nuevo espera en cola.
@@ -368,12 +369,6 @@ La tarjeta **Syllabus y preparación** del formulario es opcional y va junto a *
 
 La página de revisión muestra el bloque **Preparación de la asignatura** con cada acción y su estado. Si el ZIP trae videos pero no completaste la línea académica, aparece el aviso **Preparación omitida** y el cargue continúa igual (sin tocar la ficha).
 
-### Videos a cámara en temas
-
-Las filas cuyo tipo de recurso es **Video a cámara** se procesan aparte de la preparación del syllabus y de los videos de intro/cierre. En el formulario inicial marca **WebM** para analizar e incluir videos a cámara; esa casilla es independiente de OVI, OVA y Retos. En la revisión aparece el filtro **WebM**, marcado si se seleccionó en el inicio, y contabilizado junto con las actividades; puedes desmarcarlo para excluirlos. El nombre que se busca en PRIZMA es el **título del tema padre**, tomado de la fila con código como `1.1` (columna C) y título en D; no se usa el nombre del recurso de la fila de video. La búsqueda conserva exactamente las tildes y solo quita el punto final del título. El `.webm` se asocia dentro del ZIP por el nombre del recurso de esa fila (no por el título del tema ni por el orden del ZIP). Al incluir videos, la revisión solicita el código del programa y el código del pensum esperados. Si aparecen temas repetidos, comprueba Programa y Pensum de cada candidato y solo adjunta el video al que coincide con ambos códigos. Durante el progreso, el resumen muestra tema, nombre del recurso y archivo en un panel propio, además de la lista normal de actividades.
-
-Al iniciar el cargue, PRIZMA entra en **Actividades**, abre la pestaña **Tema**, espera a que cargue la tabla y su buscador, y luego escribe el título exacto como lo haría una persona (conservando tildes y quitando solo el punto final). Esto dispara los eventos de teclado del filtro. El automatizador espera los resultados y admite filas de tabla o filas construidas con `div`. Entra con el lápiz de edición y comprueba los códigos seleccionados de **Programa** y **Pensum**. En ambos campos compara exclusivamente el código inicial: `V2204` para Programa y `22042` para Pensum. Ignora todo texto que aparezca junto al código, tanto en lo esperado como en la opción seleccionada. Lee selects y controles accesibles tipo combobox; si no puede relacionar la etiqueta con un control, busca el código esperado entre los valores seleccionados. Si hay discrepancia, el progreso indica solo el código esperado y el detectado, para distinguir un código incorrecto de un selector no leído. Si ambos códigos coinciden, asigna el `.webm` al selector/área para adjuntar archivo del campo **Recursos** y guarda el tema. Se conserva el nombre original del `.webm` y se comprueba que quedó seleccionado en ese campo antes de guardar. Si falta el archivo, el tema no aparece o la búsqueda es ambigua, o algún código no coincide, ese video no se carga y queda como error en el progreso/reporte; el resto del cargue continúa. Los `.webm` de intro/cierre no se incluyen en este proceso.
-
 Al iniciar, la preparación se ejecuta **antes** de subir los recursos: abre la ficha de la asignatura, reemplaza syllabus y videos, **deja vacío el campo de descripción** (sin importar el texto que traiga; el contenido anterior se informa en el detalle), guarda, y solo entonces entra a Actividades y carga OVI/OVA/Retos. Cada acción queda en la lista de progreso (➖ *Omitida* cuando no aplica) y en el reporte CSV como fila `Prep N` con categoría *Preparación*. **Si una acción de preparación falla no se aborta el cargue**: se registra como error/aviso, el resto continúa y el mensaje final lista los avisos de preparación.
 
 ### Formato H5P o HTML
@@ -387,6 +382,10 @@ Las actividades con recurso interactivo (OVA y OVI de tipo H5P o infografía) se
   - Antes de guardar se verifica que el campo Html quedó idéntico al archivo.
   - PRIZMA no permite un archivo en *Recurso* y Html a la vez: si la actividad ya tenía **cualquier archivo** en *Recurso* (un H5P u otro; a veces PRIZMA solo lo muestra como "Archivo"), se elimina (papelera y confirmación *Eliminar*) y queda anotado en el reporte con su nombre (configurable con `PRIZMA_VACIAR_RECURSO_CON_HTML` en `auto_prizma/core/config.py`). Antes de quitar nada se comprueba que el `.html` se puede leer; si no, la actividad no se toca.
   - Los archivos HTML también se toman únicamente del ZIP local.
+
+### Videos a cámara
+
+Las filas cuyo tipo de recurso es `Video a cámara` se procesan aparte de las actividades convencionales. El archivo `.webm` se busca en el ZIP comparando el nombre del recurso de la matriz con el nombre del archivo; si la coincidencia resulta ambigua, la fila no se carga. En PRIZMA no se busca el nombre del recurso: se abre la pestaña **Tema**, se valida el nombre del programa y el nombre del tema de la matriz (quitando el punto final al buscar, si aparece), y se carga el video en el campo **Recurso** de ese tema. Así se evita confundir temas repetidos entre programas. Los títulos de tema se identifican por el código de la columna C (por ejemplo `1.1`) y su nombre en D.
 
 ### Reporte
 

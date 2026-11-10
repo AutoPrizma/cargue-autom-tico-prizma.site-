@@ -15,122 +15,8 @@ import zipfile
 import csv
 import os
 import re
-from urllib.parse import unquote, urlparse
 
 from auto_prizma.core.config import EXTENSIONES_HTML
-
-
-def detectar_videos_a_camara(contenido_excel, contenido_zip):
-    """Asocia cada recurso Video a cámara con el tema padre y el .webm del ZIP.
-
-    El título del tema se hereda de la fila de subtema (código en C, título en
-    D); el archivo del ZIP se relaciona por el nombre del recurso de la fila
-    marcada como Video a cámara, nunca por el título del tema ni por orden.
-    """
-    try:
-        libro = load_workbook(BytesIO(contenido_excel), data_only=True)
-        with zipfile.ZipFile(BytesIO(contenido_zip), "r") as archivo_zip:
-            miembros_webm = [
-                nombre for nombre in archivo_zip.namelist()
-                if not nombre.endswith("/")
-                and os.path.splitext(nombre)[1].lower() == ".webm"
-            ]
-    except (ValueError, zipfile.BadZipFile, OSError):
-        return []
-
-    def clave_tema(valor):
-        texto = str(valor or "").strip()
-        if texto.endswith("."):
-            texto = texto[:-1].rstrip()
-        return normalizar_texto(texto)
-
-    def clave_archivo(valor):
-        texto = str(valor or "").strip().replace("\\", "/")
-        if not texto:
-            return ""
-        url = urlparse(texto)
-        texto = unquote(url.path if url.scheme or url.netloc else texto)
-        return os.path.basename(texto).casefold()
-
-    miembros_por_nombre = {}
-    miembros_por_clave = {}
-    for miembro in miembros_webm:
-        base = os.path.basename(miembro)
-        miembros_por_nombre.setdefault(base.casefold(), []).append(miembro)
-        clave_base = clave_tema(os.path.splitext(base)[0])
-        miembros_por_clave.setdefault(clave_base, []).append(miembro)
-        if clave_base.startswith("video "):
-            miembros_por_clave.setdefault(clave_base[len("video "):].strip(), []).append(miembro)
-
-    filas = []
-    for nombre_hoja in libro.sheetnames:
-        hoja = libro[nombre_hoja]
-        cabecera = None
-        for fila in range(1, min(hoja.max_row, 30) + 1):
-            if normalizar_texto(hoja.cell(fila, 1).value) == normalizar_texto(
-                "Semana correspondiente"
-            ):
-                cabecera = fila
-                break
-        if cabecera is None:
-            continue
-
-        semana_actual = ""
-        tema_actual = ""
-        for numero_fila in range(cabecera + 1, hoja.max_row + 1):
-            semana_celda = hoja.cell(numero_fila, 1).value
-            if semana_celda:
-                semana_actual = str(semana_celda).strip()
-            titulo = str(hoja.cell(numero_fila, 4).value or "").strip()
-            codigo_tema = str(hoja.cell(numero_fila, 3).value or "").strip()
-            categoria = str(hoja.cell(numero_fila, 5).value or "").strip()
-            tipo = normalizar_texto(hoja.cell(numero_fila, 6).value)
-            referencia = str(hoja.cell(numero_fila, 7).value or "").strip()
-
-            if (
-                titulo
-                and re.fullmatch(r"\d+(?:\.\d+)?", codigo_tema)
-                and not categoria
-                and not tipo
-            ):
-                tema_actual = titulo
-                continue
-
-            if not titulo or tipo != "video a camara":
-                continue
-            filas.append({
-                "hoja": nombre_hoja,
-                "fila": numero_fila,
-                "semana": semana_actual,
-                "unidad": str(hoja.cell(numero_fila, 2).value or "").strip(),
-                "nombre": tema_actual,
-                "nombre_recurso": titulo,
-                "referencia": referencia,
-                "miembro_zip": "",
-            })
-
-    for item in filas:
-        referencia = item.get("referencia") or ""
-        nombre_archivo = clave_archivo(referencia)
-        coincidencias = (
-            miembros_por_nombre.get(nombre_archivo, [])
-            if nombre_archivo.endswith(".webm")
-            else []
-        )
-
-        # En algunas matrices Enlace apunta al archivo fuente externo, pero el
-        # ZIP renombra el video con el nombre del recurso. Usar solo esa
-        # coincidencia exacta; jamás elegir por orden ni por nombre del tema.
-        if not coincidencias:
-            base_recurso = os.path.splitext(item.get("nombre_recurso") or "")[0].strip()
-            clave_recurso = clave_tema(base_recurso)
-            if clave_recurso.startswith("video "):
-                clave_recurso = clave_recurso[len("video "):].strip()
-            coincidencias = miembros_por_clave.get(clave_recurso, [])
-        if len(coincidencias) == 1:
-            item["miembro_zip"] = coincidencias[0]
-
-    return filas
 
 
 # ============================================================
@@ -357,6 +243,9 @@ def analizar_excel(
         cantidad_h5p = 0
         cantidad_pdf = 0
         cantidad_html = 0
+        cantidad_video_camara = 0
+        tema_actual = ""
+        codigo_tema_actual = ""
 
         for fila in range(
             fila_cabecera + 1,
@@ -387,6 +276,18 @@ def analizar_excel(
                 row=fila,
                 column=6,
             ).value
+
+            codigo_tema = hoja.cell(row=fila, column=3).value
+            codigo_tema_texto = str(codigo_tema or "").strip()
+            if (
+                codigo_tema_texto
+                and re.fullmatch(r"\d+(?:\.\d+)?", codigo_tema_texto)
+                and nombre
+                and not categoria
+            ):
+                tema_actual = str(nombre).strip()
+                codigo_tema_actual = codigo_tema_texto
+                continue
 
             enlace = hoja.cell(
                 row=fila,
@@ -437,6 +338,9 @@ def analizar_excel(
             if tipo_archivo is None:
                 continue
 
+            if tipo_archivo == "VIDEO_CAMARA" and not tema_actual:
+                continue
+
             if modo_html and tipo_archivo == "H5P":
                 tipo_archivo = "HTML"
 
@@ -458,39 +362,42 @@ def analizar_excel(
             if tipo_archivo == "HTML":
                 cantidad_html += 1
 
-            actividades.append(
-                {
-                    "fila": fila,
+            if tipo_archivo == "VIDEO_CAMARA":
+                cantidad_video_camara += 1
 
-                    "semana": (
-                        str(semana).strip()
-                        if semana
-                        else ""
-                    ),
+            actividad = {
+                "fila": fila,
 
-                    "unidad": (
-                        str(unidad).strip()
-                        if unidad
-                        else ""
-                    ),
+                "semana": (
+                    str(semana).strip()
+                    if semana
+                    else ""
+                ),
 
-                    "nombre": str(
-                        nombre
-                    ).strip(),
+                "unidad": (
+                    str(unidad).strip()
+                    if unidad
+                    else ""
+                ),
 
-                    "categoria":
-                        categoria_prizma,
+                "nombre": str(
+                    nombre
+                ).strip(),
 
-                    "tipo":
-                        tipo_archivo,
+                "categoria": categoria_prizma,
 
-                    "tipo_recurso": (
-                        str(tipo_recurso).strip()
-                        if tipo_recurso
-                        else tipo_archivo
-                    ),
-                }
-            )
+                "tipo": tipo_archivo,
+
+                "tipo_recurso": (
+                    str(tipo_recurso).strip()
+                    if tipo_recurso
+                    else tipo_archivo
+                ),
+            }
+            if tipo_archivo == "VIDEO_CAMARA":
+                actividad["tema"] = tema_actual
+                actividad["codigo_tema"] = codigo_tema_actual
+            actividades.append(actividad)
 
         hojas_validas.append(
             {
@@ -529,6 +436,9 @@ def analizar_excel(
 
                 "html":
                     cantidad_html,
+
+                "video_camara":
+                    cantidad_video_camara,
             }
         )
 
@@ -550,6 +460,7 @@ def analizar_zip(
     cantidad_h5p = 0
     cantidad_pdf = 0
     cantidad_html = 0
+    cantidad_video_camara = 0
 
     with zipfile.ZipFile(
         BytesIO(contenido_zip),
@@ -581,6 +492,10 @@ def analizar_zip(
 
                 cantidad_html += 1
 
+            elif extension == ".webm":
+
+                cantidad_video_camara += 1
+
     return {
         "h5p":
             cantidad_h5p,
@@ -591,7 +506,11 @@ def analizar_zip(
         "html":
             cantidad_html,
 
+        "webm":
+            cantidad_video_camara,
+
         "total":
             (cantidad_html if modo_html else cantidad_h5p)
-            + cantidad_pdf,
+            + cantidad_pdf
+            + cantidad_video_camara,
     }
