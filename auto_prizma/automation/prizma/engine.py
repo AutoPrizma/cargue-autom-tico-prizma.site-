@@ -18,7 +18,7 @@ import time
 import threading
 import tempfile
 import html as html_lib
-from urllib.parse import quote
+from urllib.parse import quote, urlsplit
 from urllib.request import Request, urlopen
 from urllib.error import HTTPError, URLError
 
@@ -630,12 +630,12 @@ def determinar_tipo_archivo(
     ):
         return "PDF"
 
-    # Los videos a cámara se cargan en el recurso del Tema, no como actividad.
-    if tipo_n == "video a camara":
-        return "VIDEO_CAMARA"
-
-    # Videos que continúan fuera del cargue automático.
-    if tipo_n in ["video intro", "video cierre"]:
+    # VIDEOS EXCLUIDOS
+    if tipo_n in [
+        "video intro",
+        "video cierre",
+        "video a camara",
+    ]:
         return None
 
     # OVA SIEMPRE H5P
@@ -772,11 +772,8 @@ def leer_actividades_excel(
         )
 
         # ----------------------------------------------------
-        # ACTIVIDADES Y TEMAS
+        # ACTIVIDADES
         # ----------------------------------------------------
-
-        tema_actual = ""
-        codigo_tema_actual = ""
 
         for fila in range(
             fila_cabecera + 1,
@@ -807,22 +804,6 @@ def leer_actividades_excel(
                 row=fila,
                 column=6,
             ).value
-
-            codigo_tema = hoja.cell(
-                row=fila,
-                column=3,
-            ).value
-
-            codigo_tema_texto = str(codigo_tema or "").strip()
-            if (
-                codigo_tema_texto
-                and re.fullmatch(r"\d+(?:\.\d+)?", codigo_tema_texto)
-                and nombre
-                and not categoria
-            ):
-                tema_actual = str(nombre).strip()
-                codigo_tema_actual = codigo_tema_texto
-                continue
 
             enlace = ""
 
@@ -870,52 +851,49 @@ def leer_actividades_excel(
             if tipo_archivo is None:
                 continue
 
-            if tipo_archivo == "VIDEO_CAMARA" and not tema_actual:
-                continue
+            actividades.append(
+                {
+                    "fila_excel": fila,
+                    "hoja": nombre_hoja,
+                    "programa": programa,
+                    "curso": curso,
 
-            actividad_leida = {
-                "fila_excel": fila,
-                "hoja": nombre_hoja,
-                "programa": programa,
-                "curso": curso,
+                    "semana": (
+                        str(semana).strip()
+                        if semana
+                        else ""
+                    ),
 
-                "semana": (
-                    str(semana).strip()
-                    if semana
-                    else ""
-                ),
+                    "unidad": (
+                        str(unidad).strip()
+                        if unidad
+                        else ""
+                    ),
 
-                "unidad": (
-                    str(unidad).strip()
-                    if unidad
-                    else ""
-                ),
+                    "nombre": str(
+                        nombre
+                    ).strip(),
 
-                "nombre": str(
-                    nombre
-                ).strip(),
+                    "categoria_prizma":
+                        categoria_prizma,
 
-                "categoria_prizma": categoria_prizma,
+                    "tipo_recurso": (
+                        str(tipo_recurso).strip()
+                        if tipo_recurso
+                        else ""
+                    ),
 
-                "tipo_recurso": (
-                    str(tipo_recurso).strip()
-                    if tipo_recurso
-                    else ""
-                ),
+                    "tipo_archivo":
+                        tipo_archivo,
 
-                "tipo_archivo": tipo_archivo,
+                    "enlace": (
+                        str(enlace).strip()
+                        if enlace
+                        else ""
+                    ),
 
-                "enlace": (
-                    str(enlace).strip()
-                    if enlace
-                    else ""
-                ),
-
-            }
-            if tipo_archivo == "VIDEO_CAMARA":
-                actividad_leida["tema"] = tema_actual
-                actividad_leida["codigo_tema"] = codigo_tema_actual
-            actividades.append(actividad_leida)
+                }
+            )
 
     return actividades
 
@@ -951,7 +929,6 @@ def crear_indice_recursos(
             if extension not in [
                 ".h5p",
                 ".pdf",
-                ".webm",
             ] + list(EXTENSIONES_HTML):
                 continue
 
@@ -1169,10 +1146,7 @@ def archivo_parecido_a_actividad(
     Devuelve "" si no hay nada medianamente parecido.
     """
     tipo = str(actividad.get("tipo_archivo") or "").upper()
-    extension = {
-        "H5P": ".h5p", "PDF": ".pdf", "HTML": ".html",
-        "VIDEO_CAMARA": ".webm",
-    }.get(tipo)
+    extension = {"H5P": ".h5p", "PDF": ".pdf", "HTML": ".html"}.get(tipo)
     if not extension:
         return ""
 
@@ -1234,10 +1208,6 @@ def resolver_recurso(
     ] == "HTML":
 
         extension = ".html"
-
-    elif actividad["tipo_archivo"] == "VIDEO_CAMARA":
-
-        extension = ".webm"
 
     else:
 
@@ -1773,7 +1743,6 @@ def entrar_categoria(
         "OVI": "OVI",
         "OVA": "OVA",
         "CHALLENGE": "Retos Evaluativos",
-        "TEMAS": "Tema",
     }
 
     texto_pestana = nombres_pestana.get(
@@ -1795,25 +1764,10 @@ def entrar_categoria(
             pagina
         )
 
-        if categoria == "TEMAS":
-            pestanas = pagina.locator("label.tab")
-            pestana = None
-            for indice in range(pestanas.count()):
-                candidata = pestanas.nth(indice)
-                try:
-                    nombre = normalizar_texto(candidata.inner_text())
-                    if nombre in {"tema", "temas"} and candidata.is_visible():
-                        pestana = candidata
-                        break
-                except Exception:
-                    continue
-            if pestana is None:
-                return False
-        else:
-            pestana = pagina.locator(
-                "label.tab",
-                has_text=texto_pestana,
-            ).first
+        pestana = pagina.locator(
+            "label.tab",
+            has_text=texto_pestana,
+        ).first
 
         pestana.wait_for(
             state="visible",
@@ -3131,7 +3085,6 @@ def abrir_edicion(
 
 def detectar_campo_recurso(
     pagina,
-    tipo_archivo=None,
 ):
 
     archivos = pagina.locator(
@@ -3182,13 +3135,6 @@ def detectar_campo_recurso(
                 "→ RECURSO PRINCIPAL"
             )
 
-            continue
-
-        if tipo_archivo == "VIDEO_CAMARA" and (
-            ".webm" in accept_n or "video/" in accept_n
-        ):
-            candidatos_recurso.append(archivo)
-            print("→ RECURSO DE VIDEO A CÁMARA")
             continue
 
         # Material descargable.
@@ -4086,7 +4032,7 @@ def _cargar_html_en_formulario(pagina, contenido, carpeta_temp, actividad, nombr
     }
 
 
-def _intentar_guardado(pagina, boton_guardar, respuestas, captura, tipo_guardado="actividad"):
+def _intentar_guardado(pagina, boton_guardar, respuestas, captura):
     """Pulsa Guardar y espera el PATCH de la actividad.
 
     Devuelve (respuesta_patch, detalle_clic, error_clic):
@@ -4116,9 +4062,7 @@ def _intentar_guardado(pagina, boton_guardar, respuestas, captura, tipo_guardado
 
     try:
         with pagina.expect_response(
-            _es_patch_tema_response
-            if tipo_guardado == "tema"
-            else _es_patch_actividad_response,
+            _es_patch_actividad_response,
             timeout=45000,
         ) as respuesta_info:
             boton_guardar.click(
@@ -4150,7 +4094,6 @@ def _intentar_guardado(pagina, boton_guardar, respuestas, captura, tipo_guardado
             pagina,
             respuestas,
             timeout_ms=2000,
-            tipo_guardado=tipo_guardado,
         )
 
     except Exception as error_guardado:
@@ -4174,31 +4117,10 @@ def _es_patch_actividad_response(response):
         return False
 
 
-def _es_patch_tema_response(response):
-    """Identifica la actualización PATCH de un tema de PRIZMA."""
-    try:
-        url = response.url.lower()
-        return (
-            response.request.method.upper() == "PATCH"
-            and any(
-                ruta in url
-                for ruta in (
-                    "/academic/topic",
-                    "/academic/topics",
-                    "/academic/theme",
-                    "/academic/themes",
-                )
-            )
-        )
-    except Exception:
-        return False
-
-
 def esperar_patch(
     pagina,
     respuestas,
     timeout_ms=15000,
-    tipo_guardado="actividad",
 ):
     """Fallback historico sobre el listener global de respuestas."""
 
@@ -4213,13 +4135,9 @@ def esperar_patch(
             ] != "PATCH":
                 continue
 
-            url = str(respuesta.get("url") or "").lower()
-            rutas_objetivo = (
-                ("/academic/topic/", "/academic/theme/")
-                if tipo_guardado == "tema"
-                else ("/academic/activity/",)
-            )
-            if not any(ruta in url for ruta in rutas_objetivo):
+            if "/academic/activity/" not in respuesta[
+                "url"
+            ]:
                 continue
 
             return respuesta
@@ -4703,13 +4621,9 @@ def _cargar_archivo_en_recurso(
     # se vacia el Html antes de guardar y el contenido previo va al reporte.
     html_vaciado = None
 
-    tipo_archivo = str(actividad.get("tipo_archivo") or "").upper()
     if (
-        tipo_archivo == "H5P"
-        or (
-            tipo_archivo != "VIDEO_CAMARA"
-            and _conflicto_html_h5p_visible(pagina)
-        )
+        str(actividad.get("tipo_archivo") or "").upper() == "H5P"
+        or _conflicto_html_h5p_visible(pagina)
     ):
         error_html, html_vaciado = _resolver_campo_html(
             pagina,
@@ -4723,171 +4637,6 @@ def _cargar_archivo_en_recurso(
     return None, html_vaciado
 
 
-def _clave_nombre_tema(valor):
-    """Normaliza el título, omitiendo código inicial y punto final opcionales."""
-    texto = str(valor or "").strip()
-    texto = re.sub(r"^\d+(?:\.\d+)?\s+", "", texto)
-    texto = re.sub(r"\.$", "", texto.rstrip()).rstrip()
-    return normalizar_texto(texto)
-
-
-def _nombre_tema_para_busqueda(valor):
-    """Devuelve el texto de búsqueda sin un punto final de la matriz."""
-    texto = str(valor or "").strip()
-    return re.sub(r"\.$", "", texto).rstrip()
-
-
-def buscar_tema_de_programa(pagina, actividad):
-    """Busca una fila que coincida exactamente en programa y nombre de tema."""
-    buscador = pagina.locator('input[placeholder="Buscar..."]').first
-    nombre_tema = _nombre_tema_para_busqueda(actividad.get("tema"))
-    try:
-        buscador.wait_for(state="visible", timeout=20000)
-        buscador.fill(nombre_tema)
-        pagina.wait_for_timeout(1200)
-    except Exception:
-        return None, "ERROR_BUSCADOR_TEMAS_NO_DISPONIBLE"
-
-    tema_objetivo = _clave_nombre_tema(actividad.get("tema"))
-    programa_objetivo = normalizar_texto(actividad.get("programa"))
-    elementos = pagina.get_by_text(nombre_tema, exact=False)
-    filas = {}
-
-    for indice in range(elementos.count()):
-        try:
-            fila = encontrar_fila_desde_elemento(elementos.nth(indice))
-            if fila is None or not fila.is_visible():
-                continue
-            texto = fila.inner_text()
-            lineas = [linea.strip() for linea in texto.splitlines() if linea.strip()]
-            coincide_tema = any(
-                _clave_nombre_tema(linea) == tema_objetivo
-                for linea in lineas
-            )
-            coincide_programa = any(
-                normalizar_texto(linea) == programa_objetivo
-                for linea in lineas
-            )
-            if coincide_tema and coincide_programa:
-                identificador = obtener_id_temporal_fila(fila)
-                filas[identificador or str(indice)] = fila
-        except Exception:
-            continue
-
-    if not filas:
-        return None, "ERROR_TEMA_PROGRAMA_NO_ENCONTRADO"
-    if len(filas) > 1:
-        return None, "ERROR_TEMA_PROGRAMA_AMBIGUO"
-    return next(iter(filas.values())), None
-
-
-def procesar_video_a_camara(
-    pagina,
-    actividad,
-    indice_recursos,
-    carpeta_temp,
-    respuestas,
-    captura,
-    actividades_curso,
-    estado_navegacion=None,
-):
-    """Carga un .webm en el recurso del tema validando programa y tema."""
-    recurso, error = resolver_recurso(
-        actividad, indice_recursos, carpeta_temp, actividades_curso
-    )
-    if error:
-        return {"ok": False, "error": error, "recurso": ""}
-
-    nombre_recurso = recurso["nombre_original"]
-    if not asegurar_listado(pagina):
-        return {
-            "ok": False,
-            "error": "ERROR_NO_SE_PUDO_VOLVER_AL_LISTADO",
-            "recurso": nombre_recurso,
-        }
-    if not entrar_categoria(pagina, "TEMAS", estado_navegacion):
-        return {
-            "ok": False,
-            "error": "ERROR_ENTRANDO_A_TEMAS",
-            "recurso": nombre_recurso,
-        }
-
-    fila, error = buscar_tema_de_programa(pagina, actividad)
-    if error:
-        return {"ok": False, "error": error, "recurso": nombre_recurso}
-    if not abrir_edicion(pagina, fila):
-        return {
-            "ok": False,
-            "error": "ERROR_ABRIENDO_EDICION_TEMA",
-            "recurso": nombre_recurso,
-        }
-
-    if archivo_visible(pagina, nombre_recurso):
-        cancelar_edicion_segura(pagina)
-        return {"ok": True, "omitido": True, "recurso": nombre_recurso}
-
-    campo = detectar_campo_recurso(pagina, "VIDEO_CAMARA")
-    if campo is None:
-        cancelar_edicion_segura(pagina)
-        return {
-            "ok": False,
-            "error": "ERROR_CAMPO_RECURSO_VIDEO_NO_ENCONTRADO",
-            "recurso": nombre_recurso,
-        }
-
-    error_carga, _ = _cargar_archivo_en_recurso(
-        pagina,
-        campo,
-        recurso["ruta"],
-        nombre_recurso,
-        carpeta_temp,
-        actividad,
-    )
-    if error_carga:
-        return error_carga
-
-    boton_guardar = encontrar_boton_guardar(pagina)
-    if boton_guardar is None:
-        cancelar_edicion_segura(pagina)
-        return {"ok": False, "error": "ERROR_BOTON_GUARDAR", "recurso": nombre_recurso}
-
-    respuesta, detalle_clic, error_clic = _intentar_guardado(
-        pagina, boton_guardar, respuestas, captura, tipo_guardado="tema"
-    )
-    if error_clic is not None:
-        cancelar_edicion_segura(pagina)
-        return {
-            "ok": False,
-            "error": "ERROR_CLIC_GUARDAR_TEMA: " + str(error_clic),
-            "recurso": nombre_recurso,
-        }
-    if respuesta is None:
-        cancelar_edicion_segura(pagina)
-        detalle = detalle_clic or "PRIZMA no confirmó el guardado del tema."
-        return {
-            "ok": False,
-            "error": "ERROR_GUARDADO_TEMA_NO_CONFIRMADO: " + detalle,
-            "recurso": nombre_recurso,
-        }
-    if not 200 <= respuesta["status"] < 300:
-        return {
-            "ok": False,
-            "error": "ERROR_GUARDADO_TEMA_HTTP_" + str(respuesta["status"]),
-            "recurso": nombre_recurso,
-        }
-    if not asegurar_listado(pagina):
-        return {
-            "ok": False,
-            "error": "ERROR_POST_GUARDADO_TEMA_LISTADO",
-            "recurso": nombre_recurso,
-        }
-    return {
-        "ok": True,
-        "recurso": nombre_recurso,
-        "confirmacion": "PATCH",
-    }
-
-
 def procesar_actividad(
     pagina,
     actividad,
@@ -4899,18 +4648,6 @@ def procesar_actividad(
     estado_navegacion=None,
     recurso_manual=None,
 ):
-
-    if str(actividad.get("tipo_archivo") or "").upper() == "VIDEO_CAMARA":
-        return procesar_video_a_camara(
-            pagina,
-            actividad,
-            indice_recursos,
-            carpeta_temp,
-            respuestas,
-            captura,
-            actividades_curso,
-            estado_navegacion,
-        )
 
     print()
     print()
@@ -6144,27 +5881,23 @@ def verificar_actividades_prizma(
 
                     if not entrar_categoria(
                         pagina,
-                        (
-                            "TEMAS"
-                            if actividad.get("tipo_archivo") == "VIDEO_CAMARA"
-                            else actividad["categoria_prizma"]
-                        ),
+                        actividad["categoria_prizma"],
                         estado_navegacion,
                     ):
                         entrada["detalle"] = (
-                            "No se pudo abrir la pestaña de PRIZMA para verificar."
+                            "No se pudo abrir la categoría "
+                            + str(actividad["categoria_prizma"]) + "."
                         )
                     else:
-                        if actividad.get("tipo_archivo") == "VIDEO_CAMARA":
-                            fila, error = buscar_tema_de_programa(pagina, actividad)
-                        else:
-                            fila, error = buscar_actividad_correcta(pagina, actividad)
+                        fila, error = buscar_actividad_correcta(
+                            pagina,
+                            actividad,
+                        )
                         if error:
                             codigo = str(error)
                             if (
                                 "ERROR_ACTIVIDAD_NO_ENCONTRADA" in codigo
                                 or "ERROR_CURSO_SIN_PLANTILLA" in codigo
-                                or "ERROR_TEMA_PROGRAMA_NO_ENCONTRADO" in codigo
                             ):
                                 entrada["verificacion"] = "no_esta"
                             elif "ERROR_ACTIVIDAD_DUPLICADA" in codigo:
@@ -6174,11 +5907,7 @@ def verificar_actividades_prizma(
                             entrada["detalle"] = mensaje_error(codigo)
                         else:
                             entrada["verificacion"] = "existe"
-                            entrada["detalle"] = (
-                                "Tema y programa coinciden en PRIZMA."
-                                if actividad.get("tipo_archivo") == "VIDEO_CAMARA"
-                                else "Aparece en PRIZMA."
-                            )
+                            entrada["detalle"] = "Aparece en PRIZMA."
                             if str(actividad.get("tipo_archivo") or "").upper() == "H5P":
                                 entrada["detalle"] += " " + _inspeccionar_h5p_montado(
                                     pagina, fila, actividad
@@ -7718,6 +7447,755 @@ def prepare_assignment(pagina, preparacion, ruta_zip, ruta_syllabus, carpeta_tem
     return acciones
 
 
+def _extraer_codigo_inicial(texto):
+    """Extrae el código al inicio y descarta cualquier descripción posterior."""
+    patron_codigo_inicial = re.compile(r"^\s*([a-z]*\d+[a-z0-9]*)", re.I)
+    coincidencia = patron_codigo_inicial.match(str(texto or ""))
+    return coincidencia.group(1).upper() if coincidencia else ""
+
+
+def _codigo_en_texto(texto, codigo):
+    """Compara exclusivamente el código inicial, ignorando toda descripción."""
+    codigo_esperado = _extraer_codigo_inicial(codigo)
+    codigo_seleccionado = _extraer_codigo_inicial(texto)
+    return bool(codigo_esperado) and codigo_esperado == codigo_seleccionado
+
+
+def _valor_codigo_detectado(validacion, campo, codigo_esperado):
+    """Usa el campo etiquetado y, si falta, busca el código en controles activos."""
+    valor = str(validacion.get(campo) or "")
+    codigo = _extraer_codigo_inicial(codigo_esperado)
+    if codigo and _extraer_codigo_inicial(valor) == codigo:
+        return valor
+    if codigo:
+        for candidato in validacion.get("seleccionados") or []:
+            if _extraer_codigo_inicial(candidato) == codigo:
+                return str(candidato)
+    return valor
+
+
+def _consultas_busqueda_tema(nombre_tema):
+    """Devuelve el título exacto, quitando únicamente el punto final."""
+    nombre = str(nombre_tema or "").strip()
+    if nombre.endswith("."):
+        nombre = nombre[:-1]
+    return [nombre] if nombre else []
+
+
+def _topic_search_attempts(nombre_tema):
+    """Devuelve los intentos de búsqueda: (consulta, por_teclas, espera en segundos).
+
+    Si PRIZMA no filtra con el título completo (prueba del 2026-11-09: quedó
+    sin filtrar un título con coma), se prueba con teclas reales y luego con
+    su tramo más largo. El resultado siempre debe coincidir con el título exacto.
+    """
+    consultas = _consultas_busqueda_tema(nombre_tema)
+    if not consultas:
+        return []
+    completa = consultas[0]
+    fragmento = max((p.strip() for p in re.split(r"[,;:]", completa)), key=len)
+    tercera = fragmento if fragmento != completa and len(fragmento) >= 8 else completa
+    return [(completa, False, 15), (completa, True, 20), (tercera, False, 15)]
+
+
+def _normalizar_titulo_tema(texto):
+    """Normaliza mayúsculas y espacios conservando tildes y puntuación."""
+    texto = unicodedata.normalize("NFC", str(texto or "")).casefold()
+    return " ".join(texto.split()).rstrip(". ")
+
+
+def _coincide_nombre_tema(textos_celdas, texto_fila, objetivo):
+    """Exige el título completo: la búsqueda de PRIZMA también trae otros temas
+    que lo contienen («... básicas en Multilistas») y que no son el mismo tema.
+    """
+    objetivo = _normalizar_titulo_tema(objetivo)
+    textos = [_normalizar_titulo_tema(texto) for texto in (textos_celdas or [])]
+    textos = [texto for texto in textos if texto]
+    if not textos:
+        textos = _topic_row_text_parts(texto_fila)
+    return bool(objetivo) and objetivo in textos
+
+
+def _topic_row_text_parts(texto_fila):
+    """Separa el texto de una fila: un <tr> usa tabuladores y un <div>, saltos de línea."""
+    return [
+        _normalizar_titulo_tema(parte)
+        for parte in re.split(r"[\r\n\t]+", str(texto_fila or ""))
+    ]
+
+
+def _topic_row_matches_location(textos_celdas, texto_fila, semana, unidad):
+    """Descarta filas cuya Semana o Unidad visibles difieren de las de la matriz.
+
+    Solo compara valores que se puedan leer; la validación final sigue siendo
+    el título exacto y los códigos de Programa y Pensum.
+    """
+    partes = [_normalizar_titulo_tema(texto) for texto in (textos_celdas or [])]
+    if not any(partes):
+        partes = _topic_row_text_parts(texto_fila)
+    for etiqueta, esperado in (("semana", semana), ("unidad", unidad)):
+        numero_esperado = re.search(r"\d+", str(esperado or ""))
+        if not numero_esperado:
+            continue
+        for parte in partes:
+            lectura = re.fullmatch(etiqueta + r"\s*(\d+)", parte)
+            if lectura and int(lectura.group(1)) != int(numero_esperado.group()):
+                return False
+    return True
+
+
+_JS_TOPIC_RESOURCES_HAVE_FILE = """
+(indice) => {
+    const campo = document.querySelectorAll('input[type="file"]')[indice];
+    let bloque = campo ? campo.parentElement : null;
+    for (let nivel = 0; bloque && nivel < 5; nivel++, bloque = bloque.parentElement) {
+        if (bloque.querySelectorAll('input[type="file"]').length > 1) break;
+        const tarjetas = bloque.querySelectorAll('.fileItem, [class*="fileItem"]');
+        const tarjeta = Array.from(tarjetas).find(item => item.getClientRects().length);
+        if (tarjeta) {
+            const lineas = String(tarjeta.innerText || '').split('\\n')
+                .map(linea => linea.trim()).filter(Boolean);
+            return lineas[0] || 'sin nombre visible';
+        }
+    }
+    return '';
+}
+"""
+
+
+def _topic_existing_resource_name(pagina, indice, espera_segundos=3):
+    """Nombre del archivo que ya muestra Recursos, o "" si está vacío.
+
+    Da tiempo a que se pinte la tarjeta: subir antes de verla duplicaría el video.
+    """
+    limite = time.monotonic() + espera_segundos
+    while True:
+        nombre = pagina.evaluate(_JS_TOPIC_RESOURCES_HAVE_FILE, indice)
+        if not nombre:
+            tarjetas = _read_topic_resources_section(pagina).get("tarjetas") or []
+            nombre = tarjetas[0] if tarjetas else ""
+        if nombre:
+            return nombre
+        if time.monotonic() >= limite:
+            return ""
+        pagina.wait_for_timeout(250)
+
+
+# Lee la sección por su etiqueta «Recursos»: PRIZMA puede vaciar o reemplazar el
+# input al recibir el archivo, de modo que su índice deja de servir.
+_JS_TOPIC_RESOURCES_SECTION = """
+() => {
+    const limpiar = texto => String(texto || '').trim().toLowerCase();
+    const etiqueta = Array.from(document.querySelectorAll('.form-label, label, p, span, div'))
+        .find(el => !el.children.length && el.getClientRects().length
+            && limpiar(el.textContent) === 'recursos');
+    const seccion = etiqueta ? etiqueta.parentElement : null;
+    if (!seccion) return {};
+    etiqueta.scrollIntoView({ block: 'center' });
+    const tarjetas = Array.from(seccion.querySelectorAll('.fileItem, [class*="fileItem"]'))
+        .filter(tarjeta => tarjeta.getClientRects().length)
+        .map(tarjeta => String(tarjeta.innerText || '').split('\\n')
+            .map(linea => linea.trim()).filter(Boolean)[0] || 'sin nombre visible');
+    return {
+        tarjetas,
+        texto: String(seccion.innerText || ''),
+        html: seccion.outerHTML.slice(0, 20000),
+    };
+}
+"""
+
+
+def _read_topic_resources_section(pagina):
+    """Tarjetas, texto y HTML de Recursos; {} si la sección no está en pantalla."""
+    try:
+        return pagina.evaluate(_JS_TOPIC_RESOURCES_SECTION) or {}
+    except Exception:
+        return {}
+
+
+def _wait_for_attached_video(pagina, indice, nombre_archivo, espera_segundos=120):
+    """True cuando PRIZMA muestra el video adjunto en Recursos.
+
+    Antes de adjuntar se comprobó que no había tarjetas, así que una tarjeta nueva
+    es el archivo recién elegido. PRIZMA puede vaciar `input.files` al recibirlo,
+    por lo que ese valor por sí solo no sirve para decir que falló.
+    """
+    nombre_buscado = str(nombre_archivo or "").casefold()
+    limite = time.monotonic() + espera_segundos
+    while True:
+        nombres = pagina.evaluate(
+            """indice => {
+                const campo = document.querySelectorAll('input[type="file"]')[indice];
+                return campo ? Array.from(campo.files || []).map(archivo => archivo.name) : [];
+            }""",
+            indice,
+        )
+        if nombre_buscado in {str(nombre).casefold() for nombre in nombres}:
+            return True
+        seccion = _read_topic_resources_section(pagina)
+        if seccion.get("tarjetas") or nombre_buscado in str(
+            seccion.get("texto") or ""
+        ).casefold():
+            return True
+        if time.monotonic() >= limite:
+            return False
+        pagina.wait_for_timeout(500)
+
+
+def _save_topic_resources_dump(pagina, carpeta_temp, video):
+    """Guarda el HTML de Recursos para poder ajustar el selector ante un fallo."""
+    html_seccion = _read_topic_resources_section(pagina).get("html")
+    if not html_seccion or not carpeta_temp:
+        return
+    try:
+        fila = str((video or {}).get("fila_excel") or "x")
+        ruta = os.path.join(carpeta_temp, "campo_recursos_fila_" + fila + ".html")
+        with open(ruta, "w", encoding="utf-8") as archivo:
+            archivo.write(html_seccion)
+    except OSError as error:
+        print("No se pudo guardar la estructura de Recursos:", type(error).__name__)
+
+
+def subir_video_a_tema(
+    pagina,
+    video,
+    ruta_zip,
+    carpeta_temp,
+    codigo_programa,
+    codigo_pensum,
+):
+    """Busca un tema por su nombre, valida programa/pensum y adjunta su .webm.
+
+    No guarda el formulario si no coincide Programa/Pensum.
+    El nombre de matriz pierde únicamente el punto final antes de buscarlo.
+    """
+    nombre_tema = str(video.get("nombre") or "").strip()
+    if nombre_tema.endswith("."):
+        nombre_tema = nombre_tema[:-1].rstrip()
+    semana_video = video.get("semana")
+    unidad_video = video.get("unidad")
+    miembro = str(video.get("miembro_zip") or "")
+    if not miembro:
+        return {"ok": False, "error": "No se encontró en el ZIP el .webm que coincide con el tema."}
+    if not nombre_tema:
+        return {"ok": False, "error": "La matriz no indica el nombre del tema para este video."}
+
+    try:
+        pestaña_tema = pagina.evaluate(
+            """() => {
+                const normalizar = s => String(s || '').replace(/\\s+/g, ' ').trim().toLowerCase();
+                const elementos = Array.from(document.querySelectorAll(
+                    'button,a,[role="tab"],label,.tab,[class*="tab" i]'
+                ));
+                const objetivo = elementos.find(el => el.getClientRects().length
+                    && getComputedStyle(el).visibility !== 'hidden'
+                    && normalizar(el.innerText || el.textContent) === 'tema');
+                if (!objetivo) return false;
+                objetivo.click(); return true;
+            }"""
+        )
+        if not pestaña_tema:
+            return {"ok": False, "error": "No se encontró la pestaña Tema en PRIZMA."}
+        # El cambio a Tema puede tardar en montar la tabla y el buscador.
+        # Esperar el control visible antes de consultar el DOM evita revisar
+        # la lista anterior o una tabla todavía vacía durante la transición.
+        try:
+            pagina.wait_for_function(
+                """() => Array.from(document.querySelectorAll(
+                    'input[placeholder*="Buscar" i]'
+                )).some(el => {
+                    const r = el.getBoundingClientRect();
+                    return r.width > 0 && r.height > 0
+                        && getComputedStyle(el).visibility !== 'hidden';
+                })""",
+                timeout=15000,
+            )
+        except Exception:
+            pass
+        # La carga inicial de la lista no debe pisar la primera búsqueda.
+        try:
+            pagina.wait_for_load_state("networkidle", timeout=6000)
+        except Exception:
+            pass
+        objetivo = _normalizar_titulo_tema(nombre_tema)
+        buscadores = pagina.locator('input[placeholder*="Buscar" i]')
+
+        def leer_filas_con_tema():
+            filas = pagina.locator("table tbody tr, [role='row']")
+            encontradas = []
+            for indice in range(min(filas.count(), 500)):
+                fila = filas.nth(indice)
+                try:
+                    if not fila.is_visible():
+                        continue
+                    celdas = fila.locator("td")
+                    textos = [celdas.nth(i).inner_text(timeout=1000)
+                              for i in range(min(celdas.count(), 12))]
+                    texto_fila = fila.inner_text(timeout=1000) if not textos else ""
+                    # Se compara por celda para no confundir el nombre del
+                    # tema con códigos u otros campos de la misma fila.
+                    if _coincide_nombre_tema(
+                        textos, texto_fila, objetivo
+                    ) and _topic_row_matches_location(
+                        textos, texto_fila, semana_video, unidad_video
+                    ):
+                        encontradas.append(fila)
+                except Exception:
+                    try:
+                        texto_completo = fila.inner_text(timeout=1000)
+                        if _coincide_nombre_tema(
+                            [], texto_completo, objetivo
+                        ) and _topic_row_matches_location(
+                            [], texto_completo, semana_video, unidad_video
+                        ):
+                            encontradas.append(fila)
+                    except Exception:
+                        continue
+            if encontradas:
+                return encontradas
+
+            # Algunas pantallas de PRIZMA pintan filas con contenedores div
+            # sin <tr> ni role=row. En ese caso, parte del texto exacto del
+            # tema y asciende hasta el contenedor que incluye su lápiz.
+            try:
+                titulos = pagina.get_by_text(nombre_tema, exact=True)
+                for indice in range(min(titulos.count(), 30)):
+                    titulo = titulos.nth(indice)
+                    if not titulo.is_visible():
+                        continue
+                    selectores_fila = (
+                        "xpath=ancestor::tr[1]",
+                        "xpath=ancestor::*[@role='row'][1]",
+                        "xpath=ancestor::*[.//button[contains(@class,'btnLila')"
+                        " or contains(@aria-label,'ditar') or contains(@title,'ditar')]][1]",
+                    )
+                    for selector_fila in selectores_fila:
+                        fila = titulo.locator(selector_fila)
+                        if not fila.count() or not fila.is_visible():
+                            continue
+                        botones = fila.locator(
+                            'button[aria-label*="editar" i], button[title*="editar" i], '
+                            'button[aria-label*="edit" i], button[title*="edit" i], '
+                            "button.btnLila"
+                        )
+                        if not botones.count():
+                            continue
+                        texto_original = fila.inner_text(timeout=1000)
+                        if not _topic_row_matches_location(
+                            [], texto_original, semana_video, unidad_video
+                        ):
+                            break
+                        texto_fila = _normalizar_titulo_tema(texto_original)
+                        if not any(
+                            _normalizar_titulo_tema(item.inner_text(timeout=1000)) == texto_fila
+                            for item in encontradas
+                        ):
+                            encontradas.append(fila)
+                        break
+            except Exception:
+                pass
+            return encontradas
+
+        def encontrar_coincidencias():
+            # PRIZMA puede dejar buscadores de otros paneles montados en el
+            # DOM. No asumimos que el primer placeholder Buscar pertenezca a
+            # la pestaña Tema: cada campo visible se prueba por separado.
+            for indice_buscador in range(min(buscadores.count(), 10)):
+                buscador = buscadores.nth(indice_buscador)
+                try:
+                    if not buscador.is_visible():
+                        continue
+                except Exception:
+                    continue
+                for consulta, por_teclas, espera_resultado in _topic_search_attempts(nombre_tema):
+                    try:
+                        # Escribir letra por letra lanza una consulta por
+                        # tecla, y una respuesta vieja puede dejar la lista
+                        # con un texto incompleto: por eso primero se envía una
+                        # sola consulta; End dispara el teclado sin cambiar el texto.
+                        buscador.click(timeout=2500)
+                        if buscador.input_value(timeout=1200):
+                            # Sin vaciar, repetir el mismo texto no consulta.
+                            buscador.fill("", timeout=2500)
+                            pagina.wait_for_timeout(800)
+                        if por_teclas:
+                            buscador.press_sequentially(consulta, delay=35, timeout=15000)
+                        else:
+                            buscador.fill(consulta, timeout=2500)
+                            buscador.press("End", timeout=1200)
+                        # Algunas vistas aplican el filtro solo al confirmar.
+                        buscador.press("Enter", timeout=1200)
+                    except Exception:
+                        continue
+                    limite = time.monotonic() + espera_resultado
+                    while time.monotonic() < limite:
+                        if leer_filas_con_tema():
+                            # Una respuesta tardía puede repintar la lista:
+                            # solo sirven filas que sigan ahí tras asentarse.
+                            pagina.wait_for_timeout(1200)
+                            encontradas = leer_filas_con_tema()
+                            if encontradas:
+                                return encontradas
+                        pagina.wait_for_timeout(300)
+
+            # Respaldo para tablas sin buscador visible. El texto buscado se
+            # conserva para que la captura muestre qué devolvió PRIZMA.
+            return leer_filas_con_tema()
+
+        # Solo método, ruta y estado: permite saber si PRIZMA rechazó la búsqueda.
+        respuestas_busqueda = []
+
+        def registrar_respuesta(respuesta):
+            try:
+                if respuesta.request.resource_type in ("xhr", "fetch"):
+                    ruta = urlsplit(respuesta.url).path
+                    respuestas_busqueda.append(
+                        respuesta.request.method + " " + ruta + " " + str(respuesta.status)
+                    )
+            except Exception:
+                pass
+
+        pagina.on("response", registrar_respuesta)
+        try:
+            coincidencias = encontrar_coincidencias()
+        finally:
+            pagina.remove_listener("response", registrar_respuesta)
+        if not coincidencias:
+            return {
+                "ok": False,
+                "error": (
+                    "No se encontró el tema «" + nombre_tema
+                    + "» en la búsqueda de Temas de PRIZMA. Se buscó el título "
+                    "completo con sus tildes, sin el punto final, en "
+                    + (str(semana_video or "cualquier semana"))
+                    + " y "
+                    + (str(unidad_video or "cualquier unidad"))
+                    + "."
+                    + _describe_topic_search(pagina)
+                    + (
+                        " Últimas respuestas: " + "; ".join(respuestas_busqueda[-4:]) + "."
+                        if respuestas_busqueda
+                        else " No se detectaron respuestas de red durante la búsqueda."
+                    )
+                ),
+            }
+
+        # Un tema puede repetirse en varios programas. Se abre cada candidato
+        # y se comprueban los códigos antes de adjuntar nada.
+        cantidad_candidatos = len(coincidencias)
+        errores_codigo = []
+        campo_archivo = None
+        for indice_candidato in range(cantidad_candidatos):
+            # Solo un candidato validado en esta vuelta puede recibir el video:
+            # si la lista cambia al volver, no debe quedar el campo del anterior.
+            campo_archivo = None
+            coincidencias = encontrar_coincidencias()
+            if indice_candidato >= len(coincidencias):
+                break
+            fila_tema = coincidencias[indice_candidato]
+            boton_editar = fila_tema.locator(
+                'button[aria-label*="editar" i], button[title*="editar" i], '
+                'button[aria-label*="edit" i], button[title*="edit" i]'
+            )
+            if boton_editar.count() == 0:
+                boton_editar = fila_tema.locator("button.btnLila")
+            if boton_editar.count() == 0:
+                return {"ok": False, "error": "No se encontró el botón para editar el tema en PRIZMA."}
+            boton_editar.first.click(timeout=10000)
+
+            # El formulario del tema puede montar otros inputs de archivo en
+            # el DOM. Seleccionar explícitamente el input del bloque Recursos,
+            # que es el que el usuario usa para elegir/arrastrar el .webm.
+            indice_campo_recursos = find_field_file_input(pagina, ("recursos",))
+            if indice_campo_recursos < 0:
+                return {
+                    "ok": False,
+                    "error": "No se encontró el selector de archivo del campo Recursos del tema.",
+                }
+            campo_archivo = pagina.locator('input[type="file"]').nth(
+                indice_campo_recursos
+            )
+            campo_archivo.wait_for(state="attached", timeout=15000)
+
+            def leer_codigos_formulario():
+                return pagina.evaluate(
+                """(datos) => {
+                const normalizar = s => String(s || '').toLowerCase()
+                    .normalize('NFD').replace(/[\\u0300-\\u036f]/g, '')
+                    .replace(/[^a-z0-9]+/g, ' ').trim();
+                const selectorCampos = 'select, [role="combobox"], [aria-haspopup="listbox"], input:not([type="hidden"]):not([type="file"])';
+                const campos = Array.from(document.querySelectorAll(selectorCampos));
+                const valorCampo = campo => {
+                    if (campo.tagName === 'SELECT')
+                        return campo.options[campo.selectedIndex]?.text || '';
+                    return campo.value || campo.getAttribute('aria-valuetext')
+                        || campo.innerText || campo.textContent || '';
+                };
+                const seleccionados = campos.map(valorCampo).map(x => String(x || '').trim()).filter(Boolean);
+                const seleccion = (tipo) => {
+                    const esPensum = tipo === 'pensum';
+                    for (const campo of campos) {
+                        const nombres = [];
+                        if (campo.labels) nombres.push(...Array.from(campo.labels).map(x => x.innerText || x.textContent));
+                        if (campo.id) {
+                            const etiqueta = document.querySelector(`label[for="${CSS.escape(campo.id)}"]`);
+                            if (etiqueta) nombres.push(etiqueta.innerText || etiqueta.textContent);
+                        }
+                        let nodo = campo.parentElement;
+                        for (let i = 0; nodo && i < 8; i++, nodo = nodo.parentElement) {
+                            // Solo asociar la etiqueta al select de su propio
+                            // campo; los contenedores grandes agrupan controles.
+                            if (nodo.querySelectorAll(selectorCampos).length !== 1) continue;
+                            nombres.push(nodo.getAttribute('aria-label') || '');
+                            const texto = normalizar(nodo.innerText || nodo.textContent);
+                            const corresponde = esPensum
+                                ? /\\bpensum\\b/.test(texto) && !/\\bnivel de pensum\\b/.test(texto)
+                                : /\\bprograma\\b/.test(texto);
+                            if (corresponde && texto.length < 500) {
+                                return valorCampo(campo);
+                            }
+                        }
+                        if (nombres.some(nombre => esPensum
+                            ? /\\bpensum\\b/i.test(nombre) && !/\\bnivel de pensum\\b/i.test(nombre)
+                            : /\\bprograma\\b/i.test(nombre))) {
+                            return valorCampo(campo);
+                        }
+                    }
+                    return '';
+                };
+                // Programa y Pensum son listas que pueden mostrar su valor en un
+                // contenedor visible, con el input interno vacío: se lee lo que
+                // aparece a continuación de la etiqueta del campo.
+                const leerPorEtiqueta = nombre => {
+                    const etiquetas = Array.from(document.querySelectorAll('label, .form-label, p, span, div'))
+                        .filter(el => !el.children.length && el.getClientRects().length
+                            && normalizar(el.textContent) === nombre);
+                    for (const etiqueta of etiquetas) {
+                        let bloque = etiqueta.parentElement;
+                        for (let i = 0; bloque && i < 4; i++, bloque = bloque.parentElement) {
+                            const propios = bloque.querySelectorAll(selectorCampos);
+                            if (propios.length === 1) {
+                                const valor = String(valorCampo(propios[0]) || '').trim();
+                                if (valor) return valor;
+                            }
+                            const lineas = String(bloque.innerText || '').split('\\n')
+                                .map(linea => linea.trim()).filter(Boolean);
+                            const posicion = lineas.findIndex(linea => normalizar(linea) === nombre);
+                            if (posicion >= 0 && lineas[posicion + 1]) return lineas[posicion + 1];
+                        }
+                    }
+                    return '';
+                };
+                return {
+                    nombre: leerPorEtiqueta('nombre del tema'),
+                    programa: leerPorEtiqueta('programa') || seleccion('programa'),
+                    pensum: leerPorEtiqueta('pensum') || seleccion('pensum'),
+                    seleccionados
+                };
+                }""",
+                {},
+                )
+
+            # El formulario se monta antes de recibir sus valores: leerlo una
+            # sola vez daba «no detectado». Espera hasta 8 s a los códigos.
+            limite_lectura = time.monotonic() + 8
+            while True:
+                validacion = leer_codigos_formulario()
+                valor_programa = _valor_codigo_detectado(
+                    validacion, "programa", codigo_programa
+                )
+                valor_pensum = _valor_codigo_detectado(
+                    validacion, "pensum", codigo_pensum
+                )
+                programa_coincide = _codigo_en_texto(valor_programa, codigo_programa)
+                pensum_coincide = _codigo_en_texto(valor_pensum, codigo_pensum)
+                # Si la lista se repintó antes del clic, el lápiz pudo abrir
+                # otro tema del mismo programa: se confirma el nombre abierto.
+                nombre_abierto = str(validacion.get("nombre") or "")
+                nombre_coincide = not nombre_abierto or _coincide_nombre_tema(
+                    [nombre_abierto], "", objetivo
+                )
+                if programa_coincide and pensum_coincide and nombre_coincide:
+                    break
+                if time.monotonic() >= limite_lectura:
+                    break
+                pagina.wait_for_timeout(250)
+            if programa_coincide and pensum_coincide and nombre_coincide:
+                break
+
+            if not nombre_coincide:
+                errores_codigo.append("El formulario abierto no corresponde al tema buscado.")
+            if not programa_coincide:
+                esperado = _extraer_codigo_inicial(codigo_programa) or "no indicado"
+                detectado = _extraer_codigo_inicial(valor_programa) or "no detectado"
+                errores_codigo.append(
+                    "Programa: se esperaba " + esperado + " y PRIZMA mostró " + detectado + "."
+                )
+            if not pensum_coincide:
+                esperado = _extraer_codigo_inicial(codigo_pensum) or "no indicado"
+                detectado = _extraer_codigo_inicial(valor_pensum) or "no detectado"
+                errores_codigo.append(
+                    "Pensum: se esperaba " + esperado + " y PRIZMA mostró " + detectado + "."
+                )
+            if indice_candidato == cantidad_candidatos - 1:
+                detalle = " ".join(dict.fromkeys(errores_codigo))
+                return {"ok": False, "error": detalle or "Ningún tema coincide con los códigos indicados."}
+
+            # Se descarta el candidato sin guardar y se prueba el siguiente.
+            cancelar = pagina.get_by_role("button", name=re.compile(r"cancelar|volver", re.I))
+            if cancelar.count() and cancelar.last.is_visible():
+                cancelar.last.click(timeout=5000)
+            else:
+                pagina.go_back(wait_until="domcontentloaded", timeout=15000)
+            buscadores = pagina.locator('input[placeholder*="Buscar" i]')
+
+        if campo_archivo is None:
+            detalle = " ".join(dict.fromkeys(errores_codigo))
+            return {
+                "ok": False,
+                "error": detalle or "No se pudo abrir un tema coincidente en PRIZMA.",
+            }
+
+        # Decisión del usuario: un tema con archivo en Recursos se omite y se
+        # reporta; no se agrega otro ni se reemplaza el existente. No se puede
+        # afirmar que sea el mismo video, así que se informa el nombre encontrado.
+        archivo_existente = _topic_existing_resource_name(pagina, indice_campo_recursos)
+        if archivo_existente:
+            _close_open_topic_form(pagina)
+            return {
+                "ok": True,
+                "omitido": True,
+                "recurso": os.path.basename(miembro),
+                "observacion": (
+                    "El tema ya tiene en Recursos el archivo «" + archivo_existente
+                    + "». No se subió ni se reemplazó el video; revisa si es el correcto."
+                ),
+            }
+
+        # Cada archivo queda en una carpeta temporal propia para preservar el
+        # nombre original que PRIZMA muestra al seleccionar el archivo.
+        carpeta_video = tempfile.mkdtemp(
+            prefix="video_camara_",
+            dir=carpeta_temp,
+        )
+        ruta_video = os.path.join(carpeta_video, os.path.basename(miembro))
+        extraido, motivo = extract_zip_member(ruta_zip, miembro, ruta_video)
+        if not extraido:
+            return {"ok": False, "error": motivo or "No se pudo extraer el video del ZIP."}
+        if os.path.splitext(ruta_video)[1].lower() != ".webm":
+            return {"ok": False, "error": "El video a cámara debe tener formato .webm."}
+        campo_archivo.set_input_files(ruta_video, timeout=20000)
+        if not _wait_for_attached_video(
+            pagina, indice_campo_recursos, os.path.basename(ruta_video)
+        ):
+            return {
+                "ok": False,
+                "error": "PRIZMA no mostró el archivo adjunto en el campo Recursos del tema.",
+            }
+
+        # El formulario de asignatura guarda con un botón «Editar»; este puede
+        # usar el mismo texto, además de «Guardar» o «Actualizar».
+        guardar = pagina.get_by_role(
+            "button", name=re.compile(r"^\s*(guardar|actualizar|editar)\s*$", re.I)
+        )
+        if guardar.count() == 0:
+            return {"ok": False, "error": "No se encontró el botón para guardar el tema en PRIZMA."}
+        # Un video pesa decenas de MB: Guardar puede estar deshabilitado mientras
+        # PRIZMA procesa el archivo y el envío puede tardar varios minutos.
+        guardar.last.click(timeout=120000)
+        try:
+            # El input puede desaparecer al adjuntar, así que el cierre del
+            # formulario se confirma con la desaparición del botón de guardar.
+            guardar.first.wait_for(state="detached", timeout=300000)
+        except Exception:
+            return {
+                "ok": False,
+                "error": "PRIZMA no confirmó el guardado del tema; el video no se marcó como cargado.",
+            }
+        return {"ok": True, "recurso": os.path.basename(miembro)}
+    except Exception as error:
+        return {
+            "ok": False,
+            "error": "No se pudo cargar el video a cámara en PRIZMA ("
+            + ": ".join(
+                parte
+                for parte in (type(error).__name__, _describe_video_error(error))
+                if parte
+            )
+            + ").",
+        }
+
+
+def _describe_topic_search(pagina):
+    """Resume qué texto quedó en Buscar y cuántos temas informó PRIZMA."""
+    try:
+        estado = pagina.evaluate(
+            """() => ({
+                busqueda: Array.from(document.querySelectorAll('input[placeholder*="Buscar" i]'))
+                    .filter(campo => campo.getClientRects().length)
+                    .map(campo => campo.value)[0] || '',
+                total: (String(document.body.innerText || '')
+                    .match(/([\\d.,]+)\\s+Temas registrados/i) || [])[1] || '',
+            })"""
+        )
+    except Exception:
+        return ""
+    return (
+        " Al terminar, Buscar tenía «" + str(estado.get("busqueda") or "")
+        + "» y PRIZMA informó " + str(estado.get("total") or "un número desconocido de")
+        + " temas."
+    )
+
+
+def _describe_video_error(error):
+    """Resume qué paso de Playwright falló y, si fue un clic, qué lo impidió."""
+    texto = str(error or "").strip()
+    primera = texto.splitlines()[0].strip()[:200] if texto else ""
+    partes = (primera, _resumir_error_clic(error))
+    return "; ".join(dict.fromkeys(parte for parte in partes if parte))
+
+
+def _close_open_topic_form(pagina):
+    """Cierra sin guardar el formulario de tema, si quedó abierto tras un fallo."""
+    try:
+        if find_field_file_input(pagina, ("recursos",)) < 0:
+            return
+        cancelar = pagina.get_by_role("button", name=re.compile(r"cancelar|volver", re.I))
+        if cancelar.count() and cancelar.last.is_visible():
+            cancelar.last.click(timeout=5000)
+    except Exception as error:
+        print("No se pudo cerrar el formulario del tema:", type(error).__name__)
+
+
+def upload_video_with_recovery(
+    pagina,
+    video,
+    ruta_zip,
+    carpeta_temp,
+    codigo_programa,
+    codigo_pensum,
+):
+    """Sube el video y, si falla, deja captura y la página lista para el siguiente."""
+    resultado = subir_video_a_tema(
+        pagina,
+        video,
+        ruta_zip,
+        carpeta_temp,
+        codigo_programa,
+        codigo_pensum,
+    )
+    if not resultado.get("ok"):
+        # También lleva Recursos a la vista, para que aparezca en la captura.
+        _save_topic_resources_dump(pagina, carpeta_temp, video)
+        ruta_captura = _guardar_captura_diagnostico(pagina, carpeta_temp, video)
+        if ruta_captura:
+            resultado["error"] = (
+                str(resultado.get("error") or "") + " Captura: " + ruta_captura
+            ).strip()
+        _close_open_topic_form(pagina)
+    return resultado
+
+
 def ejecutar_cargue(
     ruta_excel,
     ruta_zip,
@@ -7733,6 +8211,9 @@ def ejecutar_cargue(
     formato_recurso=FORMATO_RECURSO_POR_DEFECTO,
     preparacion=None,
     ruta_syllabus="",
+    videos_camara=None,
+    codigo_programa_video_camara="",
+    codigo_pensum_video_camara="",
 ):
     navegador = None
 
@@ -7750,7 +8231,6 @@ def ejecutar_cargue(
         print()
         print("H5P -> RECURSO")
         print("PDF -> RECURSO")
-        print("VIDEO A CÁMARA -> TEMA / RECURSO")
         print("MATERIAL DESCARGABLE -> NO TOCAR")
 
         actualizar_estado(
@@ -7775,6 +8255,26 @@ def ejecutar_cargue(
             seleccion_actividades,
         )
 
+        videos_camara = videos_camara if isinstance(videos_camara, list) else []
+        actividades_videos_camara = [
+            {
+                "fila_excel": item.get("fila"),
+                "hoja": item.get("hoja") or "",
+                "programa": "",
+                "curso": "",
+                "semana": item.get("semana") or "",
+                "unidad": item.get("unidad") or "",
+                "nombre": item.get("nombre") or "Video a cámara",
+                "categoria_prizma": "Video a cámara",
+                "tipo_recurso": "Video a cámara",
+                "tipo_archivo": "VIDEO_CAMARA",
+                "miembro_zip": item.get("miembro_zip") or "",
+            }
+            for item in videos_camara
+            if isinstance(item, dict)
+        ]
+        actividades.extend(actividades_videos_camara)
+
         if not actividades:
             actualizar_estado(
                 estado,
@@ -7788,7 +8288,7 @@ def ejecutar_cargue(
             return
 
         indice_recursos = crear_indice_recursos(ruta_zip)
-        if not indice_recursos:
+        if not indice_recursos and not actividades_videos_camara:
             actualizar_estado(
                 estado,
                 etapa="error",
@@ -8050,16 +8550,26 @@ def ejecutar_cargue(
                             return
 
                         try:
-                            resultado = procesar_actividad(
-                                pagina,
-                                actividad,
-                                indice_recursos,
-                                carpeta_temp,
-                                respuestas,
-                                captura,
-                                actividades_a_procesar,
-                                estado_navegacion,
-                            )
+                            if actividad.get("tipo_archivo") == "VIDEO_CAMARA":
+                                resultado = upload_video_with_recovery(
+                                    pagina,
+                                    actividad,
+                                    ruta_zip,
+                                    carpeta_temp,
+                                    codigo_programa_video_camara,
+                                    codigo_pensum_video_camara,
+                                )
+                            else:
+                                resultado = procesar_actividad(
+                                    pagina,
+                                    actividad,
+                                    indice_recursos,
+                                    carpeta_temp,
+                                    respuestas,
+                                    captura,
+                                    actividades_a_procesar,
+                                    estado_navegacion,
+                                )
                         except Exception as e:
                             print(traceback.format_exc())
                             ultimo_error = "ERROR_NO_CONTROLADO: " + str(e)
@@ -8100,13 +8610,20 @@ def ejecutar_cargue(
                 if resultado["ok"]:
                     exitosas += 1
                     errores_estructurales_consecutivos = 0
-                    actualizar_detalle_actividad(estado, numero, "ok")
+                    observacion_omitido = resultado.get("observacion") or ""
+                    if observacion_omitido:
+                        actualizar_detalle_actividad(
+                            estado, numero, "omitido", observacion_omitido
+                        )
+                    else:
+                        actualizar_detalle_actividad(estado, numero, "ok")
                     guardar_resultado(
                         ruta_reporte,
                         actividad,
                         "OMITIDO" if resultado.get("omitido") else "OK",
                         (
-                            "El recurso ya estaba montado en PRIZMA."
+                            observacion_omitido
+                            or "El recurso ya estaba montado en PRIZMA."
                             if resultado.get("omitido")
                             else _observacion_guardado(resultado)
                         ),
