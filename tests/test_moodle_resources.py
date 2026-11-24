@@ -167,7 +167,7 @@ def test_title_below_threshold_requires_manual_attachment(tmp_path, monkeypatch)
     assert moodle_resources.publishable_entries(job, [entry["key"]]) == [entry]
 
 
-def test_package_title_match_without_content_title_is_not_auto_approved(tmp_path, monkeypatch):
+def test_package_title_match_without_content_title_is_approved(tmp_path, monkeypatch):
     monkeypatch.setattr(moodle_resources, "UPLOADS_DIR", str(tmp_path / "uploads"))
     h5p_bytes = io.BytesIO()
     with zipfile.ZipFile(h5p_bytes, "w") as h5p:
@@ -190,7 +190,33 @@ def test_package_title_match_without_content_title_is_not_auto_approved(tmp_path
     )
     entry = job["entries"][0]
 
-    assert entry["h5p_preview"]["package_similarity"] == 1.0
+    assert entry["h5p_preview"]["status"] == "match"
+    assert entry["status"] == "matched"
+
+
+def test_no_content_title_and_no_matching_title_still_requires_review(tmp_path, monkeypatch):
+    monkeypatch.setattr(moodle_resources, "UPLOADS_DIR", str(tmp_path / "uploads"))
+    h5p_bytes = io.BytesIO()
+    with zipfile.ZipFile(h5p_bytes, "w") as h5p:
+        h5p.writestr("h5p.json", json.dumps({"title": "Actividad presupuesto"}))
+        h5p.writestr(
+            "content/content.json",
+            json.dumps({"metadata": {}, "chapters": [{"metadata": {"title": "Otro tema"}}]}),
+        )
+    resources = io.BytesIO()
+    with zipfile.ZipFile(resources, "w") as archive:
+        archive.writestr("Actividad presupuestos.h5p", h5p_bytes.getvalue())
+    matrix = (
+        "Programa,Curso,Semana correspondiente,Unidad,Nombre del recurso,Categoría,Tipo de recurso,Enlace\n"
+        "P,C,Semana 1,Unidad 1,Actividad presupuestos,OVI,Infografía,Infografía - Actividad presupuestos\n"
+    ).encode("utf-8")
+
+    job = moodle_resources.create_moodle_preview(
+        "adminlocal", "matriz.csv", matrix, "recursos.zip", resources.getvalue(),
+        "https://prizma.americana.edu.co/course/view.php?id=42",
+    )
+    entry = job["entries"][0]
+
     assert entry["h5p_preview"]["status"] == "no-cover"
     assert entry["status"] == "title-review"
     assert "no se detectó" in entry["h5p_preview"]["detail"].lower()

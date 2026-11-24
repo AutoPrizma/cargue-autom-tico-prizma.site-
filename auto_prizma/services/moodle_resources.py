@@ -314,6 +314,23 @@ def inspect_h5p_title(resource_path, expected_title):
             "El título detectado dentro del contenido coincide con el de la matriz "
             "(ignorando mayúsculas, tildes y signos)."
         )
+    elif not primary_titles and expected_key and (
+        h5p_title_key(package_title) == expected_key
+        or any(h5p_title_key(title) == expected_key for title in visible_titles)
+    ):
+        # Muchos tipos H5P (Libro interactivo, presentaciones, etc.) no tienen
+        # título raíz en content.json. Sin evidencia de un título distinto, basta
+        # con que el título del paquete o uno visible coincida exactamente.
+        status = "match"
+        cover_match = next(
+            (title for title in [package_title, *visible_titles]
+             if h5p_title_key(title) == expected_key),
+            "",
+        )
+        detail = (
+            "El contenido no tiene título de portada, pero el título del paquete o uno "
+            "visible coincide con el de la matriz (ignorando mayúsculas, tildes y signos)."
+        )
     elif not primary_titles:
         status = "no-cover"
         detail = (
